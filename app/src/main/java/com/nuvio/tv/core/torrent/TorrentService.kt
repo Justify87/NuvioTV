@@ -7,6 +7,7 @@ import com.nuvio.engine.NuvioEngine
 import com.nuvio.engine.NuvioEventType
 import com.nuvio.engine.NuvioStream
 import com.nuvio.tv.R
+import com.nuvio.tv.core.vpn.TorrentVpnSafety
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
@@ -34,7 +35,8 @@ import kotlinx.coroutines.withContext
 @Singleton
 class TorrentService @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val torrentSettings: TorrentSettings
+    private val torrentSettings: TorrentSettings,
+    private val vpnSafety: TorrentVpnSafety
 ) {
     companion object {
         private const val TAG = "TorrentService"
@@ -73,6 +75,19 @@ class TorrentService @Inject constructor(
     private var engine: NuvioEngine? = null
     private var engineConfigurationKey: EngineConfigurationKey? = null
     private val knownTorrentIds = mutableSetOf<String>()
+    
+    // Enforce the gate even when playback is not in the foreground.
+    init {
+        scope.launch {
+            vpnSafety.status.collect { status ->
+                if (status != TorrentVpnSafety.Status.VERIFIED) {
+                    // No direct torrent fallback after revocation, handshake timeout or manual stop.
+                    shutdown()
+                }
+            }
+        }
+    }
+
 
     suspend fun startStream(
         infoHash: String,
@@ -145,6 +160,7 @@ class TorrentService @Inject constructor(
             ensureCurrentGeneration(generation)
             startupStatsJob = startStartupStatsPolling(resolvedEngine, generation, phase)
 
+            vpnSafety.requireReady()
             phase.set("add_magnet")
             val canonicalHash = canonicalInfoHash(infoHash)
             val reusedTorrent = canonicalHash in knownTorrentIds
@@ -156,6 +172,7 @@ class TorrentService @Inject constructor(
             ensureCurrentGeneration(generation)
             logPhase(startedAtMs, phase.get(), "torrent=${diagnosticId(torrentId)} cached=$reusedTorrent")
 
+            vpnSafety.requireReady()
             phase.set("prepare_stream")
             val stream = resolvedEngine.prepareStream(
                 torrentId = torrentId,
@@ -170,6 +187,7 @@ class TorrentService @Inject constructor(
             )
             currentCoroutineContext().ensureActive()
 
+            vpnSafety.requireReady()
             phase.set("attach_route")
             if (!attachStreamIfCurrent(generation, torrentId, stream.id)) {
                 withContext(NonCancellable) { stopPreparedStream(resolvedEngine, stream.id) }
@@ -305,6 +323,7 @@ class TorrentService @Inject constructor(
     }
 
     private suspend fun ensureEngine(): NuvioEngine {
+        vpnSafety.requireReady() // Also protects cache operations that initialize NuvioEngine.
         val settings = torrentSettings.settings.first()
         val configurationKey = EngineConfigurationKey(
             uploadEnabled = settings.enableUpload,
@@ -324,6 +343,7 @@ class TorrentService @Inject constructor(
             "Could not create the Nuvio Engine cache directory"
         }
         migrateNestedPayloadDirectory(cacheDirectory)
+        vpnSafety.requireReady()
         return NuvioEngine.create(
             buildTorrentEngineConfig(
                 stateDirectory = stateDirectory,
@@ -333,6 +353,10 @@ class TorrentService @Inject constructor(
                 diskCacheCapacityBytes = configurationKey.diskCacheCapacityBytes
             )
         ).also { created ->
+            if (!vpnSafety.isReady()) {
+                created.shutdown()
+                error("VPN disconnected while creating the Torrent Engine")
+            }
             engine = created
             engineConfigurationKey = configurationKey
             observeEngineEvents(created)
