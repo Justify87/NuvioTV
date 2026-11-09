@@ -1,6 +1,10 @@
 package com.nuvio.tv.ui.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,6 +24,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nuvio.tv.core.torrent.TorrentSessionStats
+import com.nuvio.tv.core.torrent.TorrentRateSample
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,6 +34,7 @@ import java.util.Locale
 fun TorrentHistoryDialog(
     live: TorrentSessionStats?,
     history: List<TorrentSessionStats>,
+    samples: List<TorrentRateSample>,
     onDismiss: () -> Unit,
     onClear: () -> Unit
 ) {
@@ -41,13 +47,20 @@ fun TorrentHistoryDialog(
         text = {
             Column(modifier = Modifier.heightIn(max = 470.dp),
                 verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                val detail = selected
+                val detail = selected?.let { saved ->
+                    live?.takeIf { it.startedAtMs == saved.startedAtMs } ?: saved
+                }
                 if (detail != null) {
                     Text(detail.title, color = Color(0xFF77DADD), fontSize = 14.sp)
                     Text(DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
                         .format(Date(detail.startedAtMs)) + " · " + detail.rating,
                         color = Color.White, fontSize = 13.sp)
                     TorrentSessionRows(detail)
+                    if (live?.startedAtMs == detail.startedAtMs && samples.size > 1) {
+                        Text("Download / Upload · letzte 60 Sekunden",
+                            color = Color.LightGray, fontSize = 11.sp)
+                        TorrentRateGraph(samples)
+                    }
                     Text("Die Auflösung ist ein Hinweis aus dem Dateinamen. Die Bewertung " +
                         "beruht nur auf beobachteten Sitzungsdaten.",
                         color = Color.Gray, fontSize = 11.sp)
@@ -129,3 +142,27 @@ private fun TorrentSessionRows(entry: TorrentSessionStats) {
 
 private fun speedText(bytesPerSecond: Long): String =
     String.format(Locale.GERMANY, "%.1f MB/s", bytesPerSecond / 1_048_576.0)
+
+@Composable
+private fun TorrentRateGraph(samples: List<TorrentRateSample>) {
+    val down = samples.map { it.downloadBytesPerSecond.toFloat() }
+    val up = samples.map { it.uploadBytesPerSecond.toFloat() }
+    val peak = (down + up).maxOrNull()?.coerceAtLeast(1f) ?: 1f
+    Canvas(modifier = Modifier.fillMaxWidth().height(90.dp)) {
+        fun line(values: List<Float>, color: Color) {
+            val count = (values.size - 1).coerceAtLeast(1)
+            values.zipWithNext().forEachIndexed { index, pair ->
+                drawLine(
+                    color = color,
+                    start = Offset(size.width * index / count,
+                        size.height * (1f - pair.first / peak)),
+                    end = Offset(size.width * (index + 1) / count,
+                        size.height * (1f - pair.second / peak)),
+                    strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round
+                )
+            }
+        }
+        line(down, Color(0xFF43D8DF))
+        line(up, Color(0xFF69DA86))
+    }
+}

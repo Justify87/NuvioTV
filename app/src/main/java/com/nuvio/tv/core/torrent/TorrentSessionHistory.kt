@@ -12,6 +12,12 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** In-memory live telemetry; opt-in, bounded, device-local session history. */
+data class TorrentRateSample(
+    val timestampMs: Long,
+    val downloadBytesPerSecond: Long,
+    val uploadBytesPerSecond: Long,
+    val peers: Int
+)
 data class TorrentSessionStats(
     val title: String,
     val startedAtMs: Long,
@@ -53,6 +59,8 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
     val history: StateFlow<List<TorrentSessionStats>> = _history.asStateFlow()
     private val _live = MutableStateFlow<TorrentSessionStats?>(null)
     val live: StateFlow<TorrentSessionStats?> = _live.asStateFlow()
+    private val _samples = MutableStateFlow<List<TorrentRateSample>>(emptyList())
+    val samples: StateFlow<List<TorrentRateSample>> = _samples.asStateFlow()
     private var startElapsed = 0L
     private var sampleElapsed = 0L
     private var downloadSum = 0L
@@ -66,6 +74,7 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
     @Synchronized fun begin(filename: String?) {
         finish()
         startElapsed = SystemClock.elapsedRealtime()
+        _samples.value = emptyList()
         sampleElapsed = 0L
         downloadSum = 0L
         uploadSum = 0L
@@ -84,6 +93,10 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
         val now = SystemClock.elapsedRealtime()
         if (sampleElapsed > 0L && now - sampleElapsed < 1_000L) return
         sampleElapsed = now
+        _samples.value = (_samples.value + TorrentRateSample(
+            System.currentTimeMillis(), downloadBps.coerceAtLeast(0L),
+            uploadBps.coerceAtLeast(0L), peers.coerceAtLeast(0)
+        )).takeLast(60)
         downloadSum += downloadBps.coerceAtLeast(0)
         uploadSum += uploadBps.coerceAtLeast(0)
         val count = current.samples + 1
@@ -107,6 +120,7 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
     @Synchronized fun finish(failed: Boolean = false) {
         val current = _live.value ?: return
         _live.value = null
+        _samples.value = emptyList()
         val complete = current.copy(
             durationMs = (SystemClock.elapsedRealtime() - startElapsed).coerceAtLeast(0L),
             failed = failed

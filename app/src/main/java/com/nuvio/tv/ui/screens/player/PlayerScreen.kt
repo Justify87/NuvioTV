@@ -255,6 +255,7 @@ fun PlayerScreen(
     val torrentSessions = remember(context) { (context.applicationContext as NuvioApplication).torrentSessionHistory }
     val torrentLive by torrentSessions.live.collectAsState()
     val torrentHistory by torrentSessions.history.collectAsState()
+    val torrentSamples by torrentSessions.samples.collectAsState()
     var torrentStatsDetailsOpen by remember { mutableStateOf(false) }
     var torrentHasPlayed by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.isTorrentStream, uiState.isPlaying) {
@@ -1437,6 +1438,7 @@ fun PlayerScreen(
         if (torrentStatsDetailsOpen) {
             TorrentHistoryDialog(
                 live = torrentLive, history = torrentHistory,
+                samples = torrentSamples,
                 onDismiss = { torrentStatsDetailsOpen = false },
                 onClear = { torrentSessions.clear() }
             )

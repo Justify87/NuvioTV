@@ -33,7 +33,7 @@ Target: NVIDIA Shield TV Pro (2019), Android TV 11 / API 30. Build configuration
 ### Torrent session monitor
 
 - **Playback → P2P** exposes an opt-in **Torrent-Sitzungsverlauf speichern** toggle (off by default) and a statistics dialog. The player shows the same dialog via the chart button when a native torrent is selected.
-- Live statistics come from the existing NuvioEngine stream/aggregate readings and are sampled no faster than 1 Hz: average and peak download rate, average upload rate, connected peers and seeds (peaks), received torrent payload bytes, and buffering events observed after playback has started.
+- Live statistics come from the existing NuvioEngine stream/aggregate readings and are sampled no faster than 1 Hz. A 60-sample in-memory rate chart is available for the active torrent, never written to history: average and peak download rate, average upload rate, connected peers and seeds (peaks), received torrent payload bytes, and buffering events observed after playback has started.
 - The opt-in history is stored only in app-local SharedPreferences, capped at 40 completed sessions. History can be cleared directly. Disabling it prevents new disk records; previously saved entries remain until cleared.
 - The title comes from the selected torrent filename (when available). Displayed resolution is explicitly a filename *hint*, not a codec or actual playback resolution measurement.
 - The short quality label is a heuristic derived from observed session measurements; it is not the global health of the swarm or independent tracker data. Per-peer speeds, full peer listings and completed sessions from before the feature was enabled are not available without additional native engine support.

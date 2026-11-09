@@ -41,10 +41,11 @@ internal fun PlaybackP2pSection(
     val recordHistory by sessionHistory.enabled.collectAsState()
     val history by sessionHistory.history.collectAsState()
     val live by sessionHistory.live.collectAsState()
+    val samples by sessionHistory.samples.collectAsState()
     var showHistoryDialog by remember { mutableStateOf(false) }
     if (showHistoryDialog) {
         TorrentHistoryDialog(
-            live = live, history = history,
+            live = live, history = history, samples = samples,
             onDismiss = { showHistoryDialog = false },
             onClear = { sessionHistory.clear() }
         )
