@@ -26,6 +26,11 @@ import com.nuvio.tv.core.sync.StartupSyncService
 import com.nuvio.tv.core.sync.androidtv.AndroidTvChannelSyncService
 import com.nuvio.tv.core.network.IPv4FirstDns
 import com.nuvio.tv.core.network.NoDelaySocketFactory
+import com.nuvio.tv.core.vpn.WireGuardManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import com.nuvio.tv.core.network.imageNetworkFetcherFactory
 import com.nuvio.tv.data.local.ImagePerformancePreferences
 import com.nuvio.tv.data.local.SentrySettingsDataStore
@@ -45,6 +50,7 @@ import javax.inject.Inject
 class NuvioApplication : Application(), SingletonImageLoader.Factory {
 
     @Inject lateinit var startupSyncService: StartupSyncService
+    @Inject lateinit var wireGuardManager: WireGuardManager
     @Inject lateinit var androidTvChannelSyncService: AndroidTvChannelSyncService
     @Inject lateinit var sentrySettingsDataStore: SentrySettingsDataStore
     @Inject lateinit var imagePerformancePreferences: ImagePerformancePreferences
@@ -86,6 +92,13 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         // Before super.onCreate(): Hilt creates injected services there, and the budget is read once.
         MemoryBudget.init(this)
         super.onCreate()
+        // User-selected auto-connect only. No VPN consent dialog is shown at application startup.
+        // This reduces startup exposure, but Android's app-level VPN is not a kernel kill switch.
+        if (wireGuardManager.autoConnectEnabled && wireGuardManager.vpnConsentIntent() == null) {
+            CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+                runCatching { wireGuardManager.connect() }
+            }
+        }
         SentryInitializer.start(this, sentrySettingsDataStore)
         PluginRuntimeHooks.onApplicationCreate(this)
         androidTvChannelSyncService.start()
