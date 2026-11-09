@@ -13,6 +13,7 @@ import com.android.build.gradle.internal.tasks.CompileArtProfileTask
 import com.android.build.gradle.internal.tasks.L8DexDesugarLibTask
 import java.io.File
 import java.util.Properties
+import java.net.URI
 
 // Copies the per-API dex metadata (.dm) files AGP builds next to the binary ART profile into the APK's assets, so the
 // in-app updater can install the next version together with its profile and have it compiled at install time.
@@ -90,7 +91,7 @@ val releaseNuvioPublishableKey = resolveProperty(Properties(), localProperties, 
 
 fun validateNuvioAuthConfiguration(backendUrl: String, publishableKey: String) {
     val endpoint = backendUrl.trim()
-    val uri = runCatching { java.net.URI(endpoint) }.getOrNull()
+    val uri = runCatching { URI(endpoint) }.getOrNull()
     check(
         uri != null && uri.scheme.equals("https", ignoreCase = true) &&
             !uri.host.isNullOrBlank() && uri.rawUserInfo == null &&
