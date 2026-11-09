@@ -16,6 +16,19 @@ Target: NVIDIA Shield TV Pro (2019), Android TV 11 / API 30. Build configuration
 - The monitor examines current backend state and handshake every 10 seconds while verified. It does not issue continuous public IP requests.
 - A `TorrentVpnSafety` gate blocks native Nuvio Engine initialization, including cache operations. `TorrentService` observes loss of verified state and shuts the engine down. There is no deliberate direct-torrent fallback.
 - The VPN menu uses Nuvio's existing settings rows for D-Pad navigation, with import, selection, rename, delete, connect, disconnect, optional auto-connect, status and traffic data.
+
+### Android TV file import improvements
+
+Two independent import paths are available under **Settings → VPN & WireGuard**:
+
+1. **WireGuard-Konfiguration importieren** uses `ACTION_GET_CONTENT` inside an Android app chooser. Android displays eligible installed pickers (potentially including FX File Explorer if it supports this intent); the app cannot force FX to appear.
+2. **Mit Android-Dateidialog importieren** keeps the original `ACTION_OPEN_DOCUMENT` flow when the chooser does not offer a usable TV browser.
+
+A third option starts in an external file manager: select a single `.conf` file → **Teilen/Share** → **Nuvio TV VPN – WireGuard importieren**. The exported, Hilt-enabled share receiver accepts a single `ACTION_SEND` content URI and shows a D-Pad-operable explicit confirmation. It never auto-imports, auto-connects, interprets an arbitrary text extra as a config, or accepts a plaintext path. The share target advertises `*/*` because Android TV file managers use inconsistent MIME types for `.conf`; a non-WireGuard file still fails the actual WireGuard parser and dual-stack policy.
+
+Both picker and share flows use the **same** content-URI reader. The reader never stores URI permissions or plaintext files, caps input at 64 KiB **while reading** (ignoring possibly incorrect provider size metadata), sanitizes filenames, validates via the existing WireGuard parser and dual-stack route policy, writes only Android Keystore-encrypted profiles, and wipes its temporary plaintext buffer. Provider errors are not echoed verbatim to the TV UI. No broad storage permission is needed.
+
+**Shield test coverage needed:** external picker presence, FX single-file share (including access-grant behavior), D-Pad focus on Confirm/Cancel, valid import, malformed/oversized file rejection, preservation of existing profiles and independent package IDs. File-manager picker/chooser UX is OS- and app-dependent; CI compilation does not establish that FX is offered on a specific Shield setup.
 - The app ID for the full release flavor is `com.justify87.nuviotv.wireguard` and for fullDebug `com.justify87.nuviotv.wireguard.debug`.
 - The upstream in-app updater is disabled pending dedicated fork releases.
 
