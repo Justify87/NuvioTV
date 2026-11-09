@@ -46,6 +46,7 @@ internal fun WireGuardSettingsContent(
     val info by vpn.info.collectAsStateWithLifecycle()
     val profiles by vpn.profiles.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf(vpn.selectedId) }
+    var autoConnect by remember { mutableStateOf(vpn.autoConnectEnabled) }
     var message by remember { mutableStateOf<String?>(null) }
     var renameId by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -138,6 +139,15 @@ internal fun WireGuardSettingsContent(
                         if (request != null) consent.launch(request) else connect()
                     },
                     modifier = if (initialFocusRequester != null) Modifier.focusRequester(initialFocusRequester) else Modifier
+                )
+                SettingsToggleRow(
+                    title = "Beim App-Start automatisch verbinden",
+                    subtitle = "Verbindet das ausgewählte Profil nach einem Neustart erneut, sofern Android die VPN-Berechtigung noch erlaubt",
+                    checked = autoConnect,
+                    onToggle = {
+                        autoConnect = !autoConnect
+                        vpn.autoConnectEnabled = autoConnect
+                    }
                 )
                 SettingsActionRow(
                     title = "VPN trennen",
