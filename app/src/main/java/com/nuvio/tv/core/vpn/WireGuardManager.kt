@@ -81,6 +81,10 @@ class WireGuardManager @Inject constructor(
     val selectedId: String?
         get() = prefs.getString("selected", null)
 
+    var autoConnectEnabled: Boolean
+        get() = prefs.getBoolean("auto_connect", false)
+        set(value) { prefs.edit().putBoolean("auto_connect", value).apply() }
+
     fun vpnConsentIntent() = VpnService.prepare(context)
 
     /** Saves sensitive contents in an AES/GCM file protected with an Android Keystore key. */
