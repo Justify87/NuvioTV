@@ -31,6 +31,41 @@ The current version requires **Mullvad** for exit verification; alternative Wire
 
 The current version does not yet include a full reconnect-on-network-change strategy, Android Always-on mode support, or optional routing of other installed applications.
 
+## Nuvio account QR login / official Cloud configuration
+
+The fork uses the public Nuvio Cloud client configuration published in
+[NuvioMedia/self-host/.env.example](https://github.com/NuvioMedia/self-host/blob/main/.env.example):
+`https://api.nuvio.tv` and its `sb_publishable_...` client key.
+These are public client values, **not** a Supabase service-role key. Never add
+service-role/private keys to the APK or GitHub.
+
+- Debug and release builds now use the official Nuvio Cloud backend and public
+  publishable key by default, instead of an empty URL/key on a fresh checkout.
+- If overriding these values (for an intentional custom backend), use the exact
+  property names `NUVIO_SUPABASE_URL` and `NUVIO_SUPABASE_ANON_KEY`.
+- `local.dev.properties` takes precedence over `local.properties` for the
+  `fullDebug` build. Blank values fall back to nonblank properties and then
+  to the official defaults.
+- The account web confirmation page remains `https://nuvio.tv/link`; the
+  legacy QR web page remains `https://nuvio.tv/tv-login`.
+- `verifyNuvioAuthConfig` runs in GitHub Actions **before** APK tests/build
+  and as a dependency of `preFullDebugBuild`. It rejects invalid HTTPS
+  URLs, placeholder keys and secret-role keys without printing key contents.
+  This validates configuration shape, **not** backend availability or a
+  successful end-to-end account login.
+- If the official backend URL or client key is missing/invalid at runtime,
+  the QR screen shows an actionable error instead of only “QR unavailable”.
+
+The official cloud publishable key is necessarily distributed inside the
+Android APK, just like other public mobile client keys. It is not an account
+token and grants no privileged backend access by itself.
+
+After a successful CI run, install the freshly built APK and test a complete
+device-code login, session exchange and account sync on the Shield.
+An old APK does not receive these settings until it is rebuilt and installed.
+A CI-generated *temporary signing key* may prevent in-place upgrades; use a
+stable keystore for preserving installed app data and VPN profiles.
+
 ## Enabling GitHub Actions
 
 1. Visit [Fork Actions](https://github.com/Justify87/NuvioTV/actions).
