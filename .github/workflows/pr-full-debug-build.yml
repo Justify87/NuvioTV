@@ -128,4 +128,4 @@ jobs:
       - name: Report unrelated regression test failures
         if: steps.full_suite.outcome == 'failure'
         run: |
-          echo "::warning::Full regression unit suite failed (known baseline TraktAuthServiceTest failure in unmodified source). Mandatory VPN, torrent and updater tests passed before APK upload. Review the uploaded full unit-test report."
+          echo "::warning::Full regression unit suite failed (TraktAuthServiceTest fails in source untouched by this PR; upstream baseline result not independently verified). Mandatory VPN, torrent and updater tests passed before APK upload. Review the uploaded full unit-test report."
