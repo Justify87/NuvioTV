@@ -10,8 +10,6 @@ import com.wireguard.config.Config
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.net.Inet4Address
-import java.net.Inet6Address
 import java.security.KeyStore
 import java.util.UUID
 import javax.crypto.Cipher
@@ -91,7 +89,7 @@ class WireGuardManager @Inject constructor(
         val parsed = try { Config.parse(ByteArrayInputStream(raw)) } catch (_: Exception) {
             throw IllegalArgumentException("Invalid WireGuard .conf file")
         }
-        validateFullTunnel(parsed)
+        VpnRoutePolicy.requireDualStackFullTunnel(parsed)
         val id = UUID.randomUUID().toString()
         val name = filename.substringAfterLast('/').take(60).ifBlank { "WireGuard" }
         check(directory.mkdirs() || directory.isDirectory)
@@ -144,8 +142,8 @@ class WireGuardManager @Inject constructor(
             val id = selectedId ?: error("Import a WireGuard .conf profile first")
             val bytes = withContext(Dispatchers.IO) { decrypt(File(directory, "$id.enc").readBytes()) }
             val config = Config.parse(ByteArrayInputStream(bytes))
-            validateFullTunnel(config)
-            val appScoped = restrictToThisApp(config)
+            VpnRoutePolicy.requireDualStackFullTunnel(config)
+            val appScoped = VpnRoutePolicy.restrictToApplication(config, context.packageName)
             withContext(Dispatchers.IO) { backend.setState(tunnel, Tunnel.State.UP, appScoped) }
             safety.update(TorrentVpnSafety.Status.TUNNEL_UP)
             // This app-originated request must leave through the VPN interface, not an ADB shell.
@@ -204,31 +202,6 @@ class WireGuardManager @Inject constructor(
                 publish(status = TorrentVpnSafety.Status.ERROR, error = "VPN tunnel lost or handshake expired", exitIp = null)
                 break
             }
-        }
-    }
-
-    private fun restrictToThisApp(config: Config): Config {
-        val canonical = config.toWgQuickString()
-        val withoutApps = canonical.lineSequence()
-            .filterNot { it.trimStart().startsWith("IncludedApplications", ignoreCase = true) ||
-                it.trimStart().startsWith("ExcludedApplications", ignoreCase = true) }
-            .joinToString("\n")
-        val scopeOnly = withoutApps.replaceFirst(
-            "[Interface]",
-            "[Interface]\nIncludedApplications = ${context.packageName}"
-        )
-        val result = Config.parse(ByteArrayInputStream(scopeOnly.toByteArray(Charsets.UTF_8)))
-        check(result.getInterface().includedApplications == setOf(context.packageName))
-        return result
-    }
-
-    private fun validateFullTunnel(config: Config) {
-        require(config.peers.isNotEmpty()) { "WireGuard profile contains no peer" }
-        val routes = config.peers.flatMap { it.allowedIps }
-        val v4 = routes.any { it.mask == 0 && it.address is Inet4Address }
-        val v6 = routes.any { it.mask == 0 && it.address is Inet6Address }
-        require(v4 && v6) {
-            "Full tunnel requires IPv4 and IPv6 default routes (0.0.0.0/0 and ::/0)"
         }
     }
 
