@@ -45,7 +45,12 @@ data class WireGuardInfo(
     val receivedBytes: Long = 0L,
     val sentBytes: Long = 0L,
     val exitIp: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val endpoint: String? = null,
+    val lastVerifiedAt: Long = 0L,
+    val lastCheckedAt: Long = 0L,
+    val downloadBytesPerSecond: Long = 0L,
+    val uploadBytesPerSecond: Long = 0L
 )
 
 /**
@@ -77,6 +82,11 @@ class WireGuardManager @Inject constructor(
     val profiles: StateFlow<List<WireGuardProfile>> = mutableProfiles.asStateFlow()
     private val mutableInfo = MutableStateFlow(WireGuardInfo())
     val info: StateFlow<WireGuardInfo> = mutableInfo.asStateFlow()
+    private val mutableTraffic = MutableStateFlow<List<VpnTrafficSample>>(emptyList())
+    val traffic: StateFlow<List<VpnTrafficSample>> = mutableTraffic.asStateFlow()
+    private var previousSampleAt = 0L
+    private var previousRx = 0L
+    private var previousTx = 0L
 
     val selectedId: String?
         get() = prefs.getString("selected", null)
@@ -139,6 +149,8 @@ class WireGuardManager @Inject constructor(
 
     suspend fun connect(): WireGuardInfo = lock.withLock {
         monitor?.cancel()
+        mutableTraffic.value = emptyList()
+        previousSampleAt = 0L
         safety.update(TorrentVpnSafety.Status.CONNECTING)
         publish(status = TorrentVpnSafety.Status.CONNECTING, error = null, exitIp = null)
         try {
@@ -165,6 +177,11 @@ class WireGuardManager @Inject constructor(
                 receivedBytes = stats.totalRx(),
                 sentBytes = stats.totalTx(),
                 exitIp = exitIp,
+                endpoint = config.toWgQuickString().lineSequence()
+                    .firstOrNull { it.trimStart().startsWith("Endpoint", ignoreCase = true) }
+                    ?.substringAfter('=')?.trim(),
+                lastVerifiedAt = System.currentTimeMillis(),
+                lastCheckedAt = System.currentTimeMillis(),
                 error = null
             )
             monitor = scope.launch { monitorConnection() }
@@ -188,22 +205,84 @@ class WireGuardManager @Inject constructor(
             // A failed disconnect does not re-authorize torrent activity.
             runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
         }
-        publish(status = TorrentVpnSafety.Status.DISCONNECTED, exitIp = null, error = null)
+        publish(status = TorrentVpnSafety.Status.DISCONNECTED, exitIp = null, error = null,
+            lastVerifiedAt = 0L, endpoint = null)
     }
 
-    /** Revalidate current tunnel state without an external connectivity probe. */
+    /** User-requested egress verification: never reconnects or changes the selected profile. */
+    suspend fun refreshVerification(): WireGuardInfo = lock.withLock {
+        check(safety.isReady()) { "VPN is not verified; connect it in settings first" }
+        try {
+            verifyEgress()
+            mutableInfo.value
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (error: Exception) {
+            failClosed("VPN egress verification failed")
+            throw IllegalStateException("VPN egress verification failed", error)
+        }
+    }
+
+    private suspend fun verifyEgress() {
+        check(backend.getState(tunnel) == Tunnel.State.UP) { "VPN tunnel is down" }
+        check(vpnConsentIntent() == null) { "Android VPN consent was revoked" }
+        val ip = withContext(Dispatchers.IO) { checkMullvadEgress() }
+        check(backend.getState(tunnel) == Tunnel.State.UP) { "VPN tunnel stopped during verification" }
+        val stats = backend.getStatistics(tunnel)
+        check(isRecentHandshake(latestHandshake(stats), System.currentTimeMillis())) {
+            "No recent WireGuard handshake after the egress probe"
+        }
+        val now = System.currentTimeMillis()
+        publish(exitIp = ip, lastHandshake = latestHandshake(stats),
+            receivedBytes = stats.totalRx(), sentBytes = stats.totalTx(),
+            lastVerifiedAt = now, lastCheckedAt = now, error = null)
+    }
+
+    private suspend fun failClosed(message: String) {
+        safety.update(TorrentVpnSafety.Status.ERROR)
+        publish(status = TorrentVpnSafety.Status.ERROR, error = message,
+            exitIp = null, lastVerifiedAt = 0L,
+            downloadBytesPerSecond = 0L, uploadBytesPerSecond = 0L)
+        runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
+    }
+
+    /** Lightweight counters plus periodic HTTPS egress verification. */
     private suspend fun monitorConnection() {
         while (currentCoroutineContext().isActive) {
-            delay(10_000)
+            delay(5_000)
             if (safety.status.value != TorrentVpnSafety.Status.VERIFIED) break
             try {
+                check(backend.getState(tunnel) == Tunnel.State.UP) { "WireGuard tunnel is down" }
+                check(vpnConsentIntent() == null) { "Android VPN consent was revoked" }
                 val stats = backend.getStatistics(tunnel)
-                val last = latestHandshake(stats)
-                check(backend.getState(tunnel) == Tunnel.State.UP && isRecentHandshake(last, System.currentTimeMillis()))
-                publish(lastHandshake = last, receivedBytes = stats.totalRx(), sentBytes = stats.totalTx())
-            } catch (e: Exception) {
-                safety.update(TorrentVpnSafety.Status.ERROR)
-                publish(status = TorrentVpnSafety.Status.ERROR, error = "VPN tunnel lost or handshake expired", exitIp = null)
+                val nowElapsed = android.os.SystemClock.elapsedRealtime()
+                val nowWall = System.currentTimeMillis()
+                val rx = stats.totalRx()
+                val tx = stats.totalTx()
+                val interval = nowElapsed - previousSampleAt
+                val down = if (previousSampleAt > 0L && interval > 0L && rx >= previousRx)
+                    (rx - previousRx) * 1000L / interval else 0L
+                val up = if (previousSampleAt > 0L && interval > 0L && tx >= previousTx)
+                    (tx - previousTx) * 1000L / interval else 0L
+                previousSampleAt = nowElapsed
+                previousRx = rx
+                previousTx = tx
+                mutableTraffic.value = (mutableTraffic.value +
+                    VpnTrafficSample(nowWall, down, up)).takeLast(60)
+                publish(lastHandshake = latestHandshake(stats), receivedBytes = rx, sentBytes = tx,
+                    lastCheckedAt = nowWall, downloadBytesPerSecond = down, uploadBytesPerSecond = up)
+                // The last handshake may be old on an idle tunnel; test actual egress
+                // instead of treating a quiet connection as a failure.
+                if (nowWall - mutableInfo.value.lastVerifiedAt >= 60_000L) {
+                    verifyEgress()
+                }
+                check(nowWall - mutableInfo.value.lastVerifiedAt <= 90_000L) {
+                    "VPN egress verification has expired"
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                failClosed("VPN tunnel or verified egress unavailable")
                 break
             }
         }
@@ -280,9 +359,16 @@ class WireGuardManager @Inject constructor(
         receivedBytes: Long = mutableInfo.value.receivedBytes,
         sentBytes: Long = mutableInfo.value.sentBytes,
         exitIp: String? = mutableInfo.value.exitIp,
-        error: String? = mutableInfo.value.error
+        error: String? = mutableInfo.value.error,
+        endpoint: String? = mutableInfo.value.endpoint,
+        lastVerifiedAt: Long = mutableInfo.value.lastVerifiedAt,
+        lastCheckedAt: Long = mutableInfo.value.lastCheckedAt,
+        downloadBytesPerSecond: Long = mutableInfo.value.downloadBytesPerSecond,
+        uploadBytesPerSecond: Long = mutableInfo.value.uploadBytesPerSecond
     ) {
-        mutableInfo.value = WireGuardInfo(status, profile, lastHandshake, receivedBytes, sentBytes, exitIp, error)
+        mutableInfo.value = WireGuardInfo(status, profile, lastHandshake, receivedBytes,
+            sentBytes, exitIp, error, endpoint, lastVerifiedAt, lastCheckedAt,
+            downloadBytesPerSecond, uploadBytesPerSecond)
     }
 
     companion object {
