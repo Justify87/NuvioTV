@@ -2,6 +2,8 @@ package com.nuvio.tv.core.vpn
 
 import android.content.Context
 import android.net.VpnService
+import android.net.ConnectivityManager
+import android.net.Network
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.wireguard.android.backend.GoBackend
@@ -68,6 +70,22 @@ class WireGuardManager @Inject constructor(
     private val prefs = context.getSharedPreferences("wireguard_profiles", Context.MODE_PRIVATE)
     private val lock = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    @Volatile private var observedNetwork: Network? = null
+    private val connectivityManager by lazy {
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    }
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            val previous = observedNetwork
+            observedNetwork = network
+            if (previous != null && previous != network) invalidateForNetworkChange()
+        }
+
+        override fun onLost(network: Network) {
+            if (observedNetwork == network) observedNetwork = null
+            invalidateForNetworkChange()
+        }
+    }
     private val directory = File(context.noBackupFilesDir, "wireguard-profiles")
     private val backend by lazy { GoBackend(context.applicationContext) }
     private val tunnel = object : Tunnel {
@@ -81,6 +99,32 @@ class WireGuardManager @Inject constructor(
         }
     }
     private var monitor: Job? = null
+    init {
+        // Tracks Android's default network as seen by this VPN-included app UID.
+        // A network transition invalidates the verified egress state immediately.
+        runCatching { connectivityManager.registerDefaultNetworkCallback(networkCallback) }
+    }
+
+    private fun invalidateForNetworkChange() {
+        if (!safety.isReady()) return
+        safety.update(TorrentVpnSafety.Status.ERROR)
+        publish(
+            status = TorrentVpnSafety.Status.ERROR,
+            error = "Netzwerk gewechselt oder verloren: VPN erneut verbinden",
+            exitIp = null,
+            lastVerifiedAt = 0L,
+            downloadBytesPerSecond = 0L,
+            uploadBytesPerSecond = 0L
+        )
+        monitor?.cancel()
+        scope.launch {
+            lock.withLock {
+                if (safety.status.value == TorrentVpnSafety.Status.ERROR) {
+                    runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
+                }
+            }
+        }
+    }
     private val mutableProfiles = MutableStateFlow(loadProfiles())
     val profiles: StateFlow<List<WireGuardProfile>> = mutableProfiles.asStateFlow()
     private val mutableInfo = MutableStateFlow(WireGuardInfo())
