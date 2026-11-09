@@ -68,6 +68,14 @@ import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Security
+import com.nuvio.tv.NuvioApplication
+import com.nuvio.tv.core.vpn.VpnHealth
+import com.nuvio.tv.core.vpn.VpnDisplayMode
+import com.nuvio.tv.core.vpn.VpnIndicatorPosition
+import com.nuvio.tv.core.vpn.health
+import com.nuvio.tv.ui.components.VpnMiniIndicator
+import com.nuvio.tv.ui.components.VpnStatusDialog
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -82,6 +90,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -232,6 +241,13 @@ fun PlayerScreen(
     val effectiveAutoplayEnabled by viewModel.effectiveAutoplayEnabled.collectAsState(initial = false)
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
+    val vpnManager = remember(context) { (context.applicationContext as NuvioApplication).wireGuardManager }
+    val vpnPreferences = remember(context) { (context.applicationContext as NuvioApplication).vpnDisplayPreferences }
+    val vpnInfo by vpnManager.info.collectAsState()
+    val vpnTraffic by vpnManager.traffic.collectAsState()
+    val vpnDisplay by vpnPreferences.state.collectAsState()
+    var vpnStatusOpen by remember { mutableStateOf(false) }
+    val vpnScope = rememberCoroutineScope()
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val containerFocusRequester = remember { FocusRequester() }
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -353,7 +369,9 @@ fun PlayerScreen(
 
     val handleBackPress = handleBackPress@{
         if (externalHandoffInProgress) return@handleBackPress
-        if (postPlayRecommendationState.canReturnToPlayer && !uiState.playbackEnded) {
+        if (vpnStatusOpen) {
+            vpnStatusOpen = false
+        } else if (postPlayRecommendationState.canReturnToPlayer && !uiState.playbackEnded) {
             returnToPlayerFromPostPlay()
             viewModel.hideControls()
         } else if (postPlayRecommendationState.isVisible || postPlayRecommendationState.isLoadingRecommendation) {
@@ -1396,6 +1414,14 @@ fun PlayerScreen(
             )
         }
 
+        if (vpnStatusOpen) {
+            VpnStatusDialog(
+                info = vpnInfo, traffic = vpnTraffic,
+                onDismiss = { vpnStatusOpen = false },
+                onRefresh = { vpnScope.launch { runCatching { vpnManager.refreshVerification() } } }
+            )
+        }
+
         // Torrent stats overlay (top-right corner)
         TorrentOverlay(
             visible = uiState.isTorrentStream && uiState.showTorrentStats &&
@@ -1411,6 +1437,29 @@ fun PlayerScreen(
                 .zIndex(2.7f)
                 .then(playerControlsDim)
         )
+
+        if (vpnDisplay.mode == VpnDisplayMode.ALWAYS ||
+            (vpnDisplay.mode == VpnDisplayMode.PROBLEMS_ONLY &&
+                vpnInfo.health() != VpnHealth.CONNECTED)) {
+            val torrentStatsVisible = uiState.isTorrentStream && uiState.showTorrentStats &&
+                !uiState.hideTorrentStats
+            VpnMiniIndicator(
+                info = vpnInfo,
+                size = vpnDisplay.size,
+                modifier = Modifier.align(when (vpnDisplay.position) {
+                        VpnIndicatorPosition.TOP_LEFT -> Alignment.TopStart
+                        VpnIndicatorPosition.TOP_RIGHT -> Alignment.TopEnd
+                        VpnIndicatorPosition.BOTTOM_RIGHT -> Alignment.BottomEnd
+                    })
+                    .padding(
+                        start = 24.dp, end = 24.dp,
+                        top = if (vpnDisplay.position == VpnIndicatorPosition.TOP_RIGHT &&
+                            torrentStatsVisible) 144.dp else if (uiState.showControls) 76.dp else 24.dp,
+                        bottom = 40.dp
+                    )
+                    .zIndex(2.85f)
+            )
+        }
 
         // Buffering indicator — isolated in its own composable scope so that
         // isBuffering state changes only recompose this small subtree instead
@@ -1667,6 +1716,8 @@ fun PlayerScreen(
                     restoreStreamInfoFocus = true
                     viewModel.onEvent(PlayerEvent.OnShowStreamInfo)
                 },
+                onShowVpnStatus = { vpnStatusOpen = true },
+                vpnHealth = vpnInfo.health(),
                 onResetHideTimer = {
                     viewModel.scheduleHideControls()
                     viewModel.onUserInteraction()
@@ -2781,6 +2832,8 @@ private fun PlayerControlsOverlay(
     onToggleMoreActions: () -> Unit,
     onOpenInExternalPlayer: (() -> Unit)?,
     onShowStreamInfo: () -> Unit,
+    onShowVpnStatus: () -> Unit,
+    vpnHealth: VpnHealth,
     onResetHideTimer: () -> Unit,
     onHideControls: () -> Unit,
     onBack: () -> Unit,
@@ -3082,6 +3135,21 @@ private fun PlayerControlsOverlay(
                             contentColor = if (partyActive) NuvioTheme.colors.Secondary else Color.White
                         )
                     }
+
+                    ControlButton(
+                        icon = Icons.Default.Security,
+                        contentDescription = "VPN-Status",
+                        contentColor = when (vpnHealth) {
+                            VpnHealth.CONNECTED -> Color(0xFF67D895)
+                            VpnHealth.CHECKING -> Color(0xFFF3C56B)
+                            VpnHealth.ERROR -> Color(0xFFFF7777)
+                            VpnHealth.DISCONNECTED -> Color.LightGray
+                        },
+                        onClick = onShowVpnStatus,
+                        upFocusRequester = progressUpTarget,
+                        onDownKey = onHideControls,
+                        onFocused = onResetHideTimer
+                    )
 
                     AnimatedVisibility(
                         visible = uiState.showMoreDialog,

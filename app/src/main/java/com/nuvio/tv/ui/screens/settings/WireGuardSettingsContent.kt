@@ -46,6 +46,10 @@ internal fun WireGuardSettingsContent(
     viewModel: WireGuardSettingsViewModel = hiltViewModel()
 ) {
     val vpn = viewModel.wireGuard
+    val displayPrefs = viewModel.displayPreferences
+    val display by displayPrefs.state.collectAsStateWithLifecycle()
+    val traffic by vpn.traffic.collectAsStateWithLifecycle()
+    var statusDialogOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val info by vpn.info.collectAsStateWithLifecycle()
@@ -99,6 +103,14 @@ internal fun WireGuardSettingsContent(
         importSelectedUri(uri)
     }
 
+    if (statusDialogOpen) {
+        com.nuvio.tv.ui.components.VpnStatusDialog(
+            info = info,
+            traffic = traffic,
+            onDismiss = { statusDialogOpen = false },
+            onRefresh = { scope.launch { runCatching { vpn.refreshVerification() } } }
+        )
+    }
     if (renameId != null) {
         AlertDialog(
             onDismissRequest = { renameId = null },
@@ -179,6 +191,37 @@ internal fun WireGuardSettingsContent(
                 if (info.status == TorrentVpnSafety.Status.VERIFIED) {
                     SettingsNote("Empfangen: ${info.receivedBytes / 1024} KiB · Gesendet: ${info.sentBytes / 1024} KiB")
                 }
+            }
+        }
+        item {
+            SettingsGroupCard(modifier = Modifier.fillMaxWidth(), title = "VPN-Statusanzeige") {
+                SettingsToggleRow(
+                    title = "VPN-Status im Hauptmenü",
+                    subtitle = "Kleines Schildsymbol auf der Startseite",
+                    checked = display.showHomeIndicator,
+                    onToggle = { displayPrefs.setHomeIndicator(!display.showHomeIndicator) }
+                )
+                SettingsActionRow(
+                    title = "Anzeige im Player",
+                    value = display.mode.label,
+                    subtitle = "Aus, nur bei Störung oder immer",
+                    onClick = { displayPrefs.cycleMode() }
+                )
+                SettingsActionRow(
+                    title = "Position im Player",
+                    value = display.position.label,
+                    onClick = { displayPrefs.cyclePosition() }
+                )
+                SettingsActionRow(
+                    title = "Größe im Player",
+                    value = display.size.label,
+                    onClick = { displayPrefs.cycleSize() }
+                )
+                SettingsActionRow(
+                    title = "WireGuard-Netzwerkdiagnose",
+                    subtitle = "Datenraten, Tunnel-Endpunkt und Messverlauf",
+                    onClick = { statusDialogOpen = true }
+                )
             }
         }
         item {
