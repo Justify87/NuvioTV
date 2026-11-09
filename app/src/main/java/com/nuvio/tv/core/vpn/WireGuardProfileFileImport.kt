@@ -36,7 +36,12 @@ suspend fun importWireGuardProfileFromUri(
     val displayName = safeWireGuardFilename(filename)
     val profileBytes = context.contentResolver.openInputStream(uri)?.use(::readLimitedWireGuardProfile)
         ?: throw IllegalArgumentException("Die Datei konnte nicht geöffnet werden.")
-    manager.importProfile(displayName, profileBytes)
+    try {
+        manager.importProfile(displayName, profileBytes)
+    } finally {
+        // Keep the extra plaintext copy out of memory after parsing/encryption.
+        profileBytes.fill(0)
+    }
 }
 
 /** The provider's size metadata is not trusted: enforce the limit while reading. */
