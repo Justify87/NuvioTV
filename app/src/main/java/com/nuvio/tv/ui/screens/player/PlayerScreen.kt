@@ -69,6 +69,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.ShowChart
+import com.nuvio.tv.ui.components.TorrentHistoryDialog
 import com.nuvio.tv.NuvioApplication
 import com.nuvio.tv.core.vpn.VpnHealth
 import com.nuvio.tv.core.vpn.VpnDisplayMode
@@ -248,6 +250,20 @@ fun PlayerScreen(
     val vpnDisplay by vpnPreferences.state.collectAsState()
     var vpnStatusOpen by remember { mutableStateOf(false) }
     val vpnScope = rememberCoroutineScope()
+    val torrentSessions = remember(context) { (context.applicationContext as NuvioApplication).torrentSessionHistory }
+    val torrentLive by torrentSessions.live.collectAsState()
+    val torrentHistory by torrentSessions.history.collectAsState()
+    var torrentStatsDetailsOpen by remember { mutableStateOf(false) }
+    var torrentHasPlayed by remember { mutableStateOf(false) }
+    LaunchedEffect(uiState.isTorrentStream, uiState.isPlaying) {
+        if (!uiState.isTorrentStream) torrentHasPlayed = false
+        else if (uiState.isPlaying) torrentHasPlayed = true
+    }
+    LaunchedEffect(uiState.isTorrentStream, uiState.isBuffering) {
+        if (uiState.isTorrentStream && uiState.isBuffering && torrentHasPlayed) {
+            torrentSessions.noteBuffering()
+        }
+    }
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val containerFocusRequester = remember { FocusRequester() }
     val playPauseFocusRequester = remember { FocusRequester() }
@@ -371,6 +387,8 @@ fun PlayerScreen(
         if (externalHandoffInProgress) return@handleBackPress
         if (vpnStatusOpen) {
             vpnStatusOpen = false
+        } else if (torrentStatsDetailsOpen) {
+            torrentStatsDetailsOpen = false
         } else if (postPlayRecommendationState.canReturnToPlayer && !uiState.playbackEnded) {
             returnToPlayerFromPostPlay()
             viewModel.hideControls()
@@ -1414,6 +1432,13 @@ fun PlayerScreen(
             )
         }
 
+        if (torrentStatsDetailsOpen) {
+            TorrentHistoryDialog(
+                live = torrentLive, history = torrentHistory,
+                onDismiss = { torrentStatsDetailsOpen = false },
+                onClear = { torrentSessions.clear() }
+            )
+        }
         if (vpnStatusOpen) {
             VpnStatusDialog(
                 info = vpnInfo, traffic = vpnTraffic,
@@ -1717,6 +1742,7 @@ fun PlayerScreen(
                     viewModel.onEvent(PlayerEvent.OnShowStreamInfo)
                 },
                 onShowVpnStatus = { vpnStatusOpen = true },
+                onShowTorrentStats = { torrentStatsDetailsOpen = true },
                 vpnHealth = vpnInfo.health(),
                 onResetHideTimer = {
                     viewModel.scheduleHideControls()
@@ -2833,6 +2859,7 @@ private fun PlayerControlsOverlay(
     onOpenInExternalPlayer: (() -> Unit)?,
     onShowStreamInfo: () -> Unit,
     onShowVpnStatus: () -> Unit,
+    onShowTorrentStats: () -> Unit,
     vpnHealth: VpnHealth,
     onResetHideTimer: () -> Unit,
     onHideControls: () -> Unit,
@@ -3150,6 +3177,17 @@ private fun PlayerControlsOverlay(
                         onDownKey = onHideControls,
                         onFocused = onResetHideTimer
                     )
+
+                    if (uiState.isTorrentStream) {
+                        ControlButton(
+                            icon = Icons.Default.ShowChart,
+                            contentDescription = "Torrent-Statistiken",
+                            onClick = onShowTorrentStats,
+                            upFocusRequester = progressUpTarget,
+                            onDownKey = onHideControls,
+                            onFocused = onResetHideTimer
+                        )
+                    }
 
                     AnimatedVisibility(
                         visible = uiState.showMoreDialog,

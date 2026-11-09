@@ -8,6 +8,7 @@ import com.nuvio.engine.NuvioEventType
 import com.nuvio.engine.NuvioStream
 import com.nuvio.tv.R
 import com.nuvio.tv.core.vpn.TorrentVpnSafety
+import com.nuvio.tv.core.torrent.TorrentSessionHistory
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
@@ -37,7 +38,8 @@ import kotlinx.coroutines.withContext
 class TorrentService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val torrentSettings: TorrentSettings,
-    private val vpnSafety: TorrentVpnSafety
+    private val vpnSafety: TorrentVpnSafety,
+    private val sessionHistory: TorrentSessionHistory
 ) {
     companion object {
         private const val TAG = "TorrentService"
@@ -146,6 +148,7 @@ class TorrentService @Inject constructor(
                 "filenameHint=${!filename.isNullOrBlank()} requestTrackers=${trackers.size}"
         )
         stopStreamNow(shutdownEngine = false)
+        sessionHistory.begin(filename)
         val generation = beginStreamGeneration()
 
         var activeEngine: NuvioEngine? = null
@@ -219,12 +222,14 @@ class TorrentService @Inject constructor(
             logPhase(startedAtMs, "route_ready", "generation=$generation")
             stream.url
         } catch (cancellation: CancellationException) {
+            sessionHistory.finish(failed = true)
             Log.w(TorrentDiagnosticTag, "start phase=${phase.get()} cancelled elapsedMs=${elapsedSince(startedAtMs)}")
             withContext(NonCancellable) {
                 cleanupFailedStart(generation, activeEngine, preparedStream, attached, TorrentState.Idle)
             }
             throw cancellation
         } catch (error: Exception) {
+            sessionHistory.finish(failed = true)
             Log.e(
                 TorrentDiagnosticTag,
                 "start phase=${phase.get()} failed elapsedMs=${elapsedSince(startedAtMs)} " +
@@ -256,6 +261,7 @@ class TorrentService @Inject constructor(
     }
 
     private fun detachActiveStream(): DetachedStream {
+        sessionHistory.finish()
         val detached: Pair<DetachedStream, Job?> = synchronized(lifecycleLock) {
             streamGeneration += 1
             val value = DetachedStream(engine = engine, streamId = currentStreamId)
@@ -466,6 +472,14 @@ class TorrentService @Inject constructor(
                                 route.diagnosticSummary()
                         )
                     }
+                    sessionHistory.sample(
+                        downloadBps = aggregate.downloadRateBytesPerSecond,
+                        uploadBps = aggregate.uploadRateBytesPerSecond,
+                        peers = aggregate.connectedPeers,
+                        seeds = aggregate.connectedSeeds,
+                        downloadedBytes = (aggregate.totalPayloadDownloadBytes - payloadDownloadBaseline)
+                            .coerceAtLeast(0L)
+                    )
                     updateStreamingIfCurrent(generation) { latest ->
                         latest.copy(
                             downloadSpeed = aggregate.downloadRateBytesPerSecond,
