@@ -2,6 +2,13 @@ package com.nuvio.tv.ui.screens.settings
 
 import android.text.format.Formatter
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.nuvio.tv.NuvioApplication
+import com.nuvio.tv.ui.components.TorrentHistoryDialog
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -27,6 +34,22 @@ internal fun PlaybackP2pSection(
     onOpenDialog: (PlaybackDialog) -> Unit,
     onClearTorrentCache: () -> Unit
 ) {
+    val context = LocalContext.current
+    val sessionHistory = remember(context) {
+        (context.applicationContext as NuvioApplication).torrentSessionHistory
+    }
+    val recordHistory by sessionHistory.enabled.collectAsState()
+    val history by sessionHistory.history.collectAsState()
+    val live by sessionHistory.live.collectAsState()
+    val samples by sessionHistory.samples.collectAsState()
+    var showHistoryDialog by remember { mutableStateOf(false) }
+    if (showHistoryDialog) {
+        TorrentHistoryDialog(
+            live = live, history = history, samples = samples,
+            onDismiss = { showHistoryDialog = false },
+            onClear = { sessionHistory.clear() }
+        )
+    }
     SettingsToggleRow(
         title = stringResource(R.string.p2p_consent_enable),
         subtitle = null,
@@ -44,6 +67,18 @@ internal fun PlaybackP2pSection(
         subtitle = stringResource(R.string.settings_p2p_hide_stats_subtitle),
         checked = p2p.hideStats,
         onToggle = { onUpdate { setHideTorrentStats(!p2p.hideStats) } }
+    )
+    SettingsToggleRow(
+        title = "Torrent-Sitzungsverlauf speichern",
+        subtitle = "Optional, nur lokal auf der Shield; maximal 40 Einträge",
+        checked = recordHistory,
+        onToggle = { sessionHistory.setEnabled(!recordHistory) }
+    )
+    SettingsActionRow(
+        title = "Torrent-Statistiken und Verlauf",
+        subtitle = "Download, Upload, Peers, Seeder und Sitzungsqualität",
+        value = "${history.size} Sitzungen",
+        onClick = { showHistoryDialog = true }
     )
     SettingsActionRow(
         title = stringResource(R.string.settings_p2p_profile_title),

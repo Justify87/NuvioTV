@@ -276,6 +276,22 @@ class AccountViewModel @Inject constructor(
 
     fun startQrLogin() {
         viewModelScope.launch {
+            // A fork built without a configured official backend cannot create a
+            // device-login session. Show an actionable error instead of a generic
+            // "QR unavailable" screen or attempting a malformed HTTP request.
+            if (!serverConfiguration.isCustom &&
+                (!serverConfiguration.isSecure || serverConfiguration.publishableKey.isBlank())
+            ) {
+                Log.e(TAG, "QR login unavailable: official Nuvio backend configuration is missing or invalid")
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = context.getString(R.string.account_error_nuvio_backend_not_configured),
+                        qrLoginStatus = context.getString(R.string.qr_login_start_failed)
+                    )
+                }
+                return@launch
+            }
             val traceId = qrLoginTraceCounter.incrementAndGet()
             val startedAtMs = SystemClock.elapsedRealtime()
             finishActiveQrDiagnostics(status = "cancelled", reason = "qr_login_replaced")

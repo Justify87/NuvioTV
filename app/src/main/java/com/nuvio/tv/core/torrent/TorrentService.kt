@@ -7,6 +7,8 @@ import com.nuvio.engine.NuvioEngine
 import com.nuvio.engine.NuvioEventType
 import com.nuvio.engine.NuvioStream
 import com.nuvio.tv.R
+import com.nuvio.tv.core.vpn.TorrentVpnSafety
+import com.nuvio.tv.core.torrent.TorrentSessionHistory
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
@@ -24,6 +26,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -34,7 +37,9 @@ import kotlinx.coroutines.withContext
 @Singleton
 class TorrentService @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val torrentSettings: TorrentSettings
+    private val torrentSettings: TorrentSettings,
+    private val vpnSafety: TorrentVpnSafety,
+    private val sessionHistory: TorrentSessionHistory
 ) {
     companion object {
         private const val TAG = "TorrentService"
@@ -73,6 +78,19 @@ class TorrentService @Inject constructor(
     private var engine: NuvioEngine? = null
     private var engineConfigurationKey: EngineConfigurationKey? = null
     private val knownTorrentIds = mutableSetOf<String>()
+    
+    // Enforce the gate even when playback is not in the foreground.
+    init {
+        scope.launch {
+            vpnSafety.status.collect { status ->
+                if (status != TorrentVpnSafety.Status.VERIFIED) {
+                    // No direct torrent fallback after revocation, handshake timeout or manual stop.
+                    shutdown()
+                }
+            }
+        }
+    }
+
 
     suspend fun startStream(
         infoHash: String,
@@ -130,6 +148,7 @@ class TorrentService @Inject constructor(
                 "filenameHint=${!filename.isNullOrBlank()} requestTrackers=${trackers.size}"
         )
         stopStreamNow(shutdownEngine = false)
+        sessionHistory.begin(filename)
         val generation = beginStreamGeneration()
 
         var activeEngine: NuvioEngine? = null
@@ -145,6 +164,7 @@ class TorrentService @Inject constructor(
             ensureCurrentGeneration(generation)
             startupStatsJob = startStartupStatsPolling(resolvedEngine, generation, phase)
 
+            vpnSafety.requireReady()
             phase.set("add_magnet")
             val canonicalHash = canonicalInfoHash(infoHash)
             val reusedTorrent = canonicalHash in knownTorrentIds
@@ -156,6 +176,7 @@ class TorrentService @Inject constructor(
             ensureCurrentGeneration(generation)
             logPhase(startedAtMs, phase.get(), "torrent=${diagnosticId(torrentId)} cached=$reusedTorrent")
 
+            vpnSafety.requireReady()
             phase.set("prepare_stream")
             val stream = resolvedEngine.prepareStream(
                 torrentId = torrentId,
@@ -170,6 +191,7 @@ class TorrentService @Inject constructor(
             )
             currentCoroutineContext().ensureActive()
 
+            vpnSafety.requireReady()
             phase.set("attach_route")
             if (!attachStreamIfCurrent(generation, torrentId, stream.id)) {
                 withContext(NonCancellable) { stopPreparedStream(resolvedEngine, stream.id) }
@@ -200,12 +222,14 @@ class TorrentService @Inject constructor(
             logPhase(startedAtMs, "route_ready", "generation=$generation")
             stream.url
         } catch (cancellation: CancellationException) {
+            sessionHistory.finish(failed = true)
             Log.w(TorrentDiagnosticTag, "start phase=${phase.get()} cancelled elapsedMs=${elapsedSince(startedAtMs)}")
             withContext(NonCancellable) {
                 cleanupFailedStart(generation, activeEngine, preparedStream, attached, TorrentState.Idle)
             }
             throw cancellation
         } catch (error: Exception) {
+            sessionHistory.finish(failed = true)
             Log.e(
                 TorrentDiagnosticTag,
                 "start phase=${phase.get()} failed elapsedMs=${elapsedSince(startedAtMs)} " +
@@ -237,6 +261,8 @@ class TorrentService @Inject constructor(
     }
 
     private fun detachActiveStream(): DetachedStream {
+        sessionHistory.finish(failed = vpnSafety.status.value != TorrentVpnSafety.Status.VERIFIED ||
+            _state.value is TorrentState.Error)
         val detached: Pair<DetachedStream, Job?> = synchronized(lifecycleLock) {
             streamGeneration += 1
             val value = DetachedStream(engine = engine, streamId = currentStreamId)
@@ -305,6 +331,7 @@ class TorrentService @Inject constructor(
     }
 
     private suspend fun ensureEngine(): NuvioEngine {
+        vpnSafety.requireReady() // Also protects cache operations that initialize NuvioEngine.
         val settings = torrentSettings.settings.first()
         val configurationKey = EngineConfigurationKey(
             uploadEnabled = settings.enableUpload,
@@ -324,6 +351,7 @@ class TorrentService @Inject constructor(
             "Could not create the Nuvio Engine cache directory"
         }
         migrateNestedPayloadDirectory(cacheDirectory)
+        vpnSafety.requireReady()
         return NuvioEngine.create(
             buildTorrentEngineConfig(
                 stateDirectory = stateDirectory,
@@ -333,6 +361,10 @@ class TorrentService @Inject constructor(
                 diskCacheCapacityBytes = configurationKey.diskCacheCapacityBytes
             )
         ).also { created ->
+            if (!vpnSafety.isReady()) {
+                created.shutdown()
+                error("VPN disconnected while creating the Torrent Engine")
+            }
             engine = created
             engineConfigurationKey = configurationKey
             observeEngineEvents(created)
@@ -388,6 +420,7 @@ class TorrentService @Inject constructor(
                         statsJob?.cancel()
                         statsJob = null
                         _state.value = error
+                        sessionHistory.finish(failed = true)
                     }
                     NuvioEventType.StreamStopped -> synchronized(lifecycleLock) {
                         if (engine !== activeEngine) return@synchronized
@@ -404,6 +437,7 @@ class TorrentService @Inject constructor(
                         statsJob?.cancel()
                         statsJob = null
                         _state.value = error
+                        sessionHistory.finish(failed = true)
                     }
                     else -> Unit
                 }
@@ -441,6 +475,14 @@ class TorrentService @Inject constructor(
                                 route.diagnosticSummary()
                         )
                     }
+                    sessionHistory.sample(
+                        downloadBps = aggregate.downloadRateBytesPerSecond,
+                        uploadBps = aggregate.uploadRateBytesPerSecond,
+                        peers = aggregate.connectedPeers,
+                        seeds = aggregate.connectedSeeds,
+                        downloadedBytes = (aggregate.totalPayloadDownloadBytes - payloadDownloadBaseline)
+                            .coerceAtLeast(0L)
+                    )
                     updateStreamingIfCurrent(generation) { latest ->
                         latest.copy(
                             downloadSpeed = aggregate.downloadRateBytesPerSecond,

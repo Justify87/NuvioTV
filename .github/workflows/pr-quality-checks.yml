@@ -1,0 +1,79 @@
+name: PR Quality Checks
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Compile and test (no APK)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout PR merge commit
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Prepare local properties
+        env:
+          LOCAL_PROPERTIES_BASE64: ${{ secrets.LOCAL_PROPERTIES_BASE64 }}
+          LOCAL_DEV_PROPERTIES_BASE64: ${{ secrets.LOCAL_DEV_PROPERTIES_BASE64 }}
+        run: |
+          if [ -n "$LOCAL_PROPERTIES_BASE64" ]; then
+            printf '%s' "$LOCAL_PROPERTIES_BASE64" | base64 --decode > local.properties
+          else
+            touch local.properties
+          fi
+          if [ -n "$LOCAL_DEV_PROPERTIES_BASE64" ]; then
+            printf '%s' "$LOCAL_DEV_PROPERTIES_BASE64" | base64 --decode > local.dev.properties
+          else
+            touch local.dev.properties
+          fi
+
+      - name: Validate Nuvio account QR login configuration
+        run: ./gradlew :app:verifyNuvioAuthConfig --stacktrace
+
+      # Compile sources and unit tests; do not assemble or publish an APK.
+      - name: Compile Kotlin and run mandatory VPN, torrent, settings and updater tests
+        run: |
+          ./gradlew :app:compileFullDebugKotlin :app:testFullDebugUnitTest \
+            --tests 'com.nuvio.tv.core.vpn.*' \
+            --tests 'com.nuvio.tv.core.torrent.*' \
+            --tests 'com.nuvio.tv.ui.screens.settings.SettingsCatalogTest' \
+            --tests 'com.nuvio.tv.updater.*' \
+            --stacktrace
+
+      # Preserve the informational full regression policy until an upstream
+      # test baseline is verified independently.
+      - name: Run full unit regression suite (informational)
+        id: regression
+        continue-on-error: true
+        run: ./gradlew :app:testFullDebugUnitTest --stacktrace
+
+      - name: Report extended regression failures
+        if: steps.regression.outcome == 'failure'
+        run: |
+          echo "::warning::Extended unit tests failed. Review the report before merging; mandatory safety tests have passed."
+
+      - name: Upload test results when a check fails
+        if: failure() || steps.regression.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: NuvioTV-PR-unit-test-results
+          path: app/build/test-results/testFullDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 7

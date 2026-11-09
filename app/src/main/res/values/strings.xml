@@ -1,5 +1,6 @@
 <resources>
-    <string name="app_name">Nuvio</string>
+    <string name="app_name">Nuvio TV VPN</string>
+    <string name="wireguard_share_target_label">Nuvio TV VPN – WireGuard importieren</string>
     <string name="tv_channel_continue_watching">Continue Watching</string>
     <string name="type_movie">Movie</string>
     <string name="type_movies">Movies</string>
@@ -557,6 +558,7 @@
     <string name="account_error_qr_login_outdated">QR login service is outdated. Reapply TV login SQL setup.</string>
     <string name="account_error_qr_login_missing_setup">QR login backend is missing setup. Update TV login SQL setup.</string>
     <string name="account_error_qr_login_misconfigured">QR login URL is misconfigured.</string>
+    <string name="account_error_nuvio_backend_not_configured">This build has no valid Nuvio account backend configuration. Please install a correctly configured Nuvio TV VPN APK.</string>
     <string name="account_error_qr_login_invalid_request">QR login request was invalid. Please retry.</string>
     <string name="account_error_no_internet">No internet connection.</string>
     <string name="account_error_connection_timeout">Connection timed out. Please try again.</string>

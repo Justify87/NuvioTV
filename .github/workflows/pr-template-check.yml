@@ -136,7 +136,10 @@ jobs:
               cleanedContent("Issue or approval") || "",
               cleanedContent("Linked issues") || "",
             ].join(" ");
-            if (issueRequired && !hasIssueReference(issueText)) {
+            // The owner of a personal fork may authorize changes directly when issues are disabled.
+            const forkOwnerApproval = context.repo.owner === "Justify87" &&
+              pr.user && pr.user.login === "Justify87";
+            if (issueRequired && !hasIssueReference(issueText) && !forkOwnerApproval) {
               failedRules.push("Bug fixes and approved changes must link an issue or approved feature request.");
             }
 

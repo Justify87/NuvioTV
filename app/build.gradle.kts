@@ -13,6 +13,7 @@ import com.android.build.gradle.internal.tasks.CompileArtProfileTask
 import com.android.build.gradle.internal.tasks.L8DexDesugarLibTask
 import java.io.File
 import java.util.Properties
+import java.net.URI
 
 // Copies the per-API dex metadata (.dm) files AGP builds next to the binary ART profile into the APK's assets, so the
 // in-app updater can install the next version together with its profile and have it compiled at install time.
@@ -78,6 +79,52 @@ val devProperties = Properties().apply {
     }
 }
 
+// Public client settings published by the official NuvioMedia/self-host project.
+// These are NOT private service-role credentials. Local properties still override them.
+val officialNuvioBackendUrl = "https://api.nuvio.tv"
+val officialNuvioPublishableKey = "sb_publishable_1Clq8rlTVACkdcZuqr6_AD__xUUC_EN"
+
+val debugNuvioBackendUrl = resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_URL", officialNuvioBackendUrl)
+val debugNuvioPublishableKey = resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_ANON_KEY", officialNuvioPublishableKey)
+val releaseNuvioBackendUrl = resolveProperty(Properties(), localProperties, "NUVIO_SUPABASE_URL", officialNuvioBackendUrl)
+val releaseNuvioPublishableKey = resolveProperty(Properties(), localProperties, "NUVIO_SUPABASE_ANON_KEY", officialNuvioPublishableKey)
+
+fun validateNuvioAuthConfiguration(backendUrl: String, publishableKey: String) {
+    val endpoint = backendUrl.trim()
+    val uri = runCatching { URI(endpoint) }.getOrNull()
+    check(
+        uri != null && uri.scheme.equals("https", ignoreCase = true) &&
+            !uri.host.isNullOrBlank() && uri.rawUserInfo == null &&
+            uri.rawQuery == null && uri.rawFragment == null &&
+            !endpoint.contains("your_", ignoreCase = true)
+    ) {
+        "Invalid NUVIO_SUPABASE_URL for Nuvio account login. Use an HTTPS backend URL in local.dev.properties or local.properties."
+    }
+    val key = publishableKey.trim()
+    check(
+        key.length >= 20 && !key.startsWith("your_", ignoreCase = true) &&
+            !key.startsWith("sb_secret_", ignoreCase = true) &&
+            !key.contains('<') && !key.contains('>')
+    ) {
+        "Missing or invalid public NUVIO_SUPABASE_ANON_KEY. Configure a publishable/anon client key, never a service-role key."
+    }
+}
+
+val verifyNuvioAuthConfig = tasks.register("verifyNuvioAuthConfig") {
+    group = "verification"
+    description = "Fail fast if the QR login backend URL or public client key is missing or malformed."
+    doLast {
+        validateNuvioAuthConfiguration(debugNuvioBackendUrl, debugNuvioPublishableKey)
+        logger.lifecycle("Nuvio QR login build config is populated (URL/key values are not logged).")
+    }
+}
+
+// Also guard locally assembled fullDebug APKs, not only GitHub Actions.
+tasks.matching { it.name == "preFullDebugBuild" }.configureEach {
+    dependsOn(verifyNuvioAuthConfig)
+}
+
+
 val enableDoviNative = parseBooleanProperty(
     resolveProperty(devProperties, localProperties, "DOVI_NATIVE_ENABLED")
 )
@@ -131,7 +178,7 @@ android {
     ndkVersion = "29.0.14206865"
 
     defaultConfig {
-        applicationId = "com.nuvio.tv"
+        applicationId = "com.justify87.nuviotv.wireguard"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         minSdk = 24
         targetSdk = 36
@@ -177,7 +224,7 @@ android {
         buildConfigField("String", "SENTRY_DSN", buildConfigString(sentryDsn))
 
         // In-app updater (GitHub Releases)
-        buildConfigField("String", "GITHUB_OWNER", "\"NuvioMedia\"")
+        buildConfigField("String", "GITHUB_OWNER", "\"Justify87\"")
         buildConfigField("String", "GITHUB_REPO", "\"NuvioTV\"")
     }
 
@@ -186,7 +233,7 @@ android {
         create("full") {
             dimension = "distribution"
             buildConfigField("boolean", "FEATURE_PLUGINS_ENABLED", "true")
-            buildConfigField("boolean", "FEATURE_IN_APP_UPDATES_ENABLED", "true")
+            buildConfigField("boolean", "FEATURE_IN_APP_UPDATES_ENABLED", "false")
             buildConfigField("boolean", "FEATURE_IN_APP_TRAILERS_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_EXTERNAL_TRAILERS_ENABLED", "true")
             buildConfigField("boolean", "FEATURE_EXTERNAL_PLAYBACK_KEEP_ALIVE_ENABLED", "true")
@@ -194,7 +241,7 @@ android {
         }
         create("playstore") {
             dimension = "distribution"
-            applicationId = "com.nuvio.app"
+            applicationId = "com.justify87.nuviotv.wireguard.playstore"
             buildConfigField("boolean", "FEATURE_PLUGINS_ENABLED", "false")
             buildConfigField("boolean", "FEATURE_IN_APP_UPDATES_ENABLED", "false")
             buildConfigField("boolean", "FEATURE_IN_APP_TRAILERS_ENABLED", "false")
@@ -231,8 +278,8 @@ android {
             buildConfigField("String", "SENTRY_ENVIRONMENT", buildConfigString("debug"))
 
             // Dev environment (from local.dev.properties)
-            buildConfigField("String", "SUPABASE_URL", buildConfigString(resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_URL")))
-            buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_ANON_KEY")))
+            buildConfigField("String", "SUPABASE_URL", buildConfigString(debugNuvioBackendUrl))
+            buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(debugNuvioPublishableKey))
             buildConfigField("String", "SUPABASE_FALLBACK_URL", buildConfigString(resolveProperty(devProperties, localProperties, "NUVIO_SUPABASE_FALLBACK_URL")))
             buildConfigField("String", "TV_LOGIN_WEB_BASE_URL", "\"${devProperties.getProperty("TV_LOGIN_WEB_BASE_URL", "https://nuvio.tv/tv-login")}\"")
             buildConfigField("String", "DEVICE_LOGIN_WEB_BASE_URL", "\"${devProperties.getProperty("DEVICE_LOGIN_WEB_BASE_URL", "https://nuvio.tv/link")}\"")
@@ -266,8 +313,8 @@ android {
             buildConfigField("String", "SENTRY_ENVIRONMENT", buildConfigString("production"))
 
             // Production environment (from local.properties)
-            buildConfigField("String", "SUPABASE_URL", buildConfigString(localProperties.getProperty("NUVIO_SUPABASE_URL", "")))
-            buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(localProperties.getProperty("NUVIO_SUPABASE_ANON_KEY", "")))
+            buildConfigField("String", "SUPABASE_URL", buildConfigString(releaseNuvioBackendUrl))
+            buildConfigField("String", "SUPABASE_ANON_KEY", buildConfigString(releaseNuvioPublishableKey))
             buildConfigField("String", "SUPABASE_FALLBACK_URL", buildConfigString(localProperties.getProperty("NUVIO_SUPABASE_FALLBACK_URL", "")))
             buildConfigField("String", "TV_LOGIN_WEB_BASE_URL", "\"${localProperties.getProperty("TV_LOGIN_WEB_BASE_URL", "https://nuvio.tv/tv-login")}\"")
             buildConfigField("String", "DEVICE_LOGIN_WEB_BASE_URL", "\"${localProperties.getProperty("DEVICE_LOGIN_WEB_BASE_URL", "https://nuvio.tv/link")}\"")
@@ -365,7 +412,7 @@ android {
 androidComponents {
     onVariants(selector().withBuildType("debug")) { variant ->
         val isPlaystore = variant.productFlavors.any { it.second == "playstore" }
-        variant.applicationId.set(if (isPlaystore) "com.nuvio.appdebug" else "com.nuviodebug.com")
+        variant.applicationId.set(if (isPlaystore) "com.justify87.nuviotv.wireguard.playstore.debug" else "com.justify87.nuviotv.wireguard.debug")
     }
     // Only the full flavor ships the in-app updater.
     onVariants(selector().withFlavor("distribution" to "full")) { variant ->
@@ -441,6 +488,8 @@ sentry {
 }
 
 dependencies {
+    // Official Apache-2.0 WireGuard userspace tunnel, includes the VpnService manifest.
+    implementation("com.wireguard.android:tunnel:1.0.20260102")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     val composeBom = platform("androidx.compose:compose-bom:2026.05.01")
 

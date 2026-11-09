@@ -80,6 +80,21 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <!-- Explicitly confirms and validates any file shared from external file managers.
+             Broad MIME match is intentional: .conf may be advertised as text/plain,
+             application/octet-stream or */* by different Android TV explorers. -->
+        <activity
+            android:name=".core.vpn.WireGuardShareImportActivity"
+            android:exported="true"
+            android:label="@string/wireguard_share_target_label"
+            android:theme="@style/Theme.MyApplication">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -2,7 +2,9 @@ package com.nuvio.tv.core.di
 
 import android.content.Context
 import com.nuvio.tv.core.torrent.TorrentService
+import com.nuvio.tv.core.torrent.TorrentSessionHistory
 import com.nuvio.tv.core.torrent.TorrentSettings
+import com.nuvio.tv.core.vpn.TorrentVpnSafety
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -24,6 +26,8 @@ object TorrentModule {
     @Singleton
     fun provideTorrentService(
         @ApplicationContext context: Context,
-        torrentSettings: TorrentSettings
-    ): TorrentService = TorrentService(context, torrentSettings)
+        torrentSettings: TorrentSettings,
+        vpnSafety: TorrentVpnSafety,
+        sessionHistory: TorrentSessionHistory
+    ): TorrentService = TorrentService(context, torrentSettings, vpnSafety, sessionHistory)
 }

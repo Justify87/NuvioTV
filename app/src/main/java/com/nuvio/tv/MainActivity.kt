@@ -140,6 +140,10 @@ import androidx.tv.material3.contentColorFor
 import androidx.tv.material3.rememberDrawerState
 import com.nuvio.tv.R
 import com.nuvio.tv.core.auth.AuthManager
+import com.nuvio.tv.core.vpn.WireGuardManager
+import com.nuvio.tv.core.vpn.VpnDisplayPreferences
+import com.nuvio.tv.ui.components.VpnStatusButton
+import com.nuvio.tv.ui.components.VpnStatusDialog
 import com.nuvio.tv.core.auth.DeviceSessionRegistration
 import com.nuvio.tv.core.deeplink.DeepLinkHandler
 import com.nuvio.tv.core.deeplink.DeepLinkParser
@@ -300,6 +304,12 @@ open class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var authManager: AuthManager
+
+    @Inject
+    lateinit var wireGuardManager: WireGuardManager
+
+    @Inject
+    lateinit var vpnDisplayPreferences: VpnDisplayPreferences
 
     @Inject
     lateinit var deviceSessionRegistration: DeviceSessionRegistration
@@ -1180,6 +1190,10 @@ open class MainActivity : ComponentActivity() {
                             hasSelectedProfileThisSession = false
                         }
                         Box(modifier = Modifier.fillMaxSize()) {
+                            val vpnInfo by wireGuardManager.info.collectAsState()
+                            val vpnTraffic by wireGuardManager.traffic.collectAsState()
+                            val vpnDisplay by vpnDisplayPreferences.state.collectAsState()
+                            var vpnStatusOpen by remember { mutableStateOf(false) }
                             CompositionLocalProvider(LocalNavViewModelStoreOwner provides navViewModelStoreOwner) {
                                 if (modernSidebarEnabled) {
                                     ModernSidebarScaffold(
@@ -1222,6 +1236,25 @@ open class MainActivity : ComponentActivity() {
                                         onExitApp = handleExitApp
                                     )
                                 }
+                            }
+
+                            if (currentRoute in rootRoutes && vpnDisplay.showHomeIndicator) {
+                                VpnStatusButton(
+                                    info = vpnInfo,
+                                    onClick = { vpnStatusOpen = true },
+                                    modifier = Modifier.align(Alignment.BottomStart)
+                                        .padding(start = 18.dp, bottom = 18.dp)
+                                )
+                            }
+                            if (vpnStatusOpen) {
+                                VpnStatusDialog(
+                                    info = vpnInfo,
+                                    traffic = vpnTraffic,
+                                    onDismiss = { vpnStatusOpen = false },
+                                    onRefresh = { lifecycleScope.launch {
+                                        runCatching { wireGuardManager.refreshVerification() }
+                                    } }
+                                )
                             }
 
                             val autoNextOverlay by externalPlaybackTracker.autoNextOverlay.collectAsState()

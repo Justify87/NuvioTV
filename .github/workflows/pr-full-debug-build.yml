@@ -1,22 +1,21 @@
 name: PR Full Debug Build
 
+# Keep this workflow name for compatibility with the PR result commenter.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches: [dev]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr-full-debug-build-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: manual-debug-apk-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   full-debug-build:
-    name: Build fullDebug APK
+    name: Build fullDebug APK (manual)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -46,33 +45,68 @@ jobs:
             touch local.dev.properties
           fi
 
-      - name: Prepare CI signing config
+      - name: Validate Nuvio account QR login configuration
+        run: ./gradlew :app:verifyNuvioAuthConfig --stacktrace
+
+      - name: Prepare consistent CI signing (optional)
+        env:
+          NUVIO_CI_KEYSTORE_BASE64: ${{ secrets.NUVIO_CI_KEYSTORE_BASE64 }}
+          NUVIO_CI_KEY_ALIAS: ${{ secrets.NUVIO_CI_KEY_ALIAS }}
+          NUVIO_CI_KEY_PASSWORD: ${{ secrets.NUVIO_CI_KEY_PASSWORD }}
+          NUVIO_CI_STORE_PASSWORD: ${{ secrets.NUVIO_CI_STORE_PASSWORD }}
         run: |
-          keytool -genkeypair \
-            -v \
-            -keystore "$RUNNER_TEMP/ci-debug.jks" \
-            -storepass android \
-            -alias androiddebugkey \
-            -keypass android \
-            -dname "CN=Android Debug,O=Android,C=US" \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000
+          if [ -n "$NUVIO_CI_KEYSTORE_BASE64" ]; then
+            test -n "$NUVIO_CI_KEY_ALIAS"
+            test -n "$NUVIO_CI_KEY_PASSWORD"
+            test -n "$NUVIO_CI_STORE_PASSWORD"
+            printf '%s' "$NUVIO_CI_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nuvio-wireguard-ci.jks"
+            chmod 600 "$RUNNER_TEMP/nuvio-wireguard-ci.jks"
+            {
+              echo "NUVIO_RELEASE_STORE_FILE=$RUNNER_TEMP/nuvio-wireguard-ci.jks"
+              echo "NUVIO_RELEASE_KEY_ALIAS=$NUVIO_CI_KEY_ALIAS"
+              echo "NUVIO_RELEASE_KEY_PASSWORD=$NUVIO_CI_KEY_PASSWORD"
+              echo "NUVIO_RELEASE_STORE_PASSWORD=$NUVIO_CI_STORE_PASSWORD"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::No signing secrets: this first-test APK uses a disposable keystore and will not be update-compatible with subsequent runs."
+            keytool -genkeypair -noprompt -keystore "$RUNNER_TEMP/ci-debug.jks" \
+              -storepass android -alias androiddebugkey -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+            {
+              echo "NUVIO_RELEASE_STORE_FILE=$RUNNER_TEMP/ci-debug.jks"
+              echo "NUVIO_RELEASE_KEY_ALIAS=androiddebugkey"
+              echo "NUVIO_RELEASE_KEY_PASSWORD=android"
+              echo "NUVIO_RELEASE_STORE_PASSWORD=android"
+            } >> "$GITHUB_ENV"
+          fi
 
-          {
-            echo "NUVIO_RELEASE_STORE_FILE=$RUNNER_TEMP/ci-debug.jks"
-            echo "NUVIO_RELEASE_KEY_ALIAS=androiddebugkey"
-            echo "NUVIO_RELEASE_KEY_PASSWORD=android"
-            echo "NUVIO_RELEASE_STORE_PASSWORD=android"
-          } >> "$GITHUB_ENV"
+      - name: Run mandatory VPN, torrent and updater tests
+        run: |
+          ./gradlew :app:testFullDebugUnitTest \
+            --tests 'com.nuvio.tv.core.vpn.*' \
+            --tests 'com.nuvio.tv.core.torrent.*' \
+            --tests 'com.nuvio.tv.ui.screens.settings.SettingsCatalogTest' \
+            --tests 'com.nuvio.tv.updater.*' \
+            --stacktrace
 
-      - name: Test updater and build fullDebug APK
-        run: ./gradlew :app:testFullDebugUnitTest --tests 'com.nuvio.tv.updater.*' :app:assembleFullDebug --stacktrace
+      - name: Build fullDebug APK after mandatory tests
+        run: ./gradlew :app:assembleFullDebug --stacktrace
+
+      - name: Verify the output APK
+        run: |
+          APK="app/build/outputs/apk/full/debug/app-full-universal-debug.apk"
+          test -s "$APK"
+          echo "APK: $(du -h "$APK")"
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | grep -E '^(package:|native-code:)'
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK"
 
       - name: Upload fullDebug APK
         uses: actions/upload-artifact@v7
         with:
+          name: NuvioTV-WireGuard-debug
           path: app/build/outputs/apk/full/debug/app-full-universal-debug.apk
           archive: false
           if-no-files-found: error
           retention-days: 7
+

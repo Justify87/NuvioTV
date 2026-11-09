@@ -13,7 +13,13 @@ permissions:
 
 jobs:
   comment:
-    name: Comment PR with debug build result
+    name: Comment PR with manual APK result
+    # workflow_run executes from the default branch with write permissions.
+    # Never check out or execute content from the source workflow.
+    if: >-
+      ${{ github.event.workflow_run.event == 'workflow_dispatch' &&
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -22,35 +28,41 @@ jobs:
         with:
           script: |
             const run = context.payload.workflow_run;
-            let pr = run.pull_requests?.[0];
-            if (!pr && run.head_sha) {
-              const associatedPulls = await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                commit_sha: run.head_sha,
-                per_page: 100
-              });
-              pr = associatedPulls.find((item) => item.state === "open") || associatedPulls[0];
+            const repoFullName = context.repo.owner + "/" + context.repo.repo;
+            if (run.event !== "workflow_dispatch" ||
+                run.head_repository?.full_name?.toLowerCase() !== repoFullName.toLowerCase() ||
+                !["success", "failure"].includes(run.conclusion)) {
+              core.info("Ignoring non-manual, cancelled or untrusted run.");
+              return;
             }
-            if (!pr && run.head_repository?.owner?.login && run.head_branch) {
-              const head = `${run.head_repository.owner.login}:${run.head_branch}`;
-              const branchPulls = await github.paginate(github.rest.pulls.list, {
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                state: "open",
-                head,
-                per_page: 100
-              });
-              pr = branchPulls.find((item) => item.head?.sha === run.head_sha) || branchPulls[0];
-            }
+
+            // Dispatch runs frequently have no linked PR. Locate the branch PR.
+            const branchPulls = await github.paginate(github.rest.pulls.list, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              head: context.repo.owner + ":" + run.head_branch,
+              per_page: 100
+            });
+            const pr = branchPulls.find((item) => item.head?.sha === run.head_sha);
             if (!pr) {
-              core.info(`No pull request was associated with workflow run ${run.id} at ${run.head_sha}.`);
+              core.info("No open PR at this manual build's commit.");
+              return;
+            }
+
+            const latestPR = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number
+            });
+            if (latestPR.data.state !== "open" || latestPR.data.head.sha !== run.head_sha) {
+              core.info("PR advanced; do not advertise an obsolete debug APK.");
               return;
             }
 
             const marker = "<!-- nuvio-full-debug-build -->";
+            const shortSha = run.head_sha.slice(0, 7);
             const runUrl = run.html_url;
-            const artifactName = "app-full-universal-debug.apk";
             let body;
 
             if (run.conclusion === "success") {
@@ -60,27 +72,31 @@ jobs:
                 run_id: run.id,
                 per_page: 100
               });
-              const artifact = artifacts.find((item) => item.name === artifactName);
+              const artifact = artifacts.find((item) =>
+                !item.expired && ["NuvioTV-WireGuard-debug", "app-full-universal-debug.apk"].includes(item.name)
+              );
               const artifactUrl = artifact
-                ? `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${run.id}/artifacts/${artifact.id}`
-                : runUrl;
-
+                ? context.serverUrl + "/" + context.repo.owner + "/" + context.repo.repo +
+                    "/actions/runs/" + run.id + "/artifacts/" + artifact.id
+                : null;
               body = [
                 marker,
-                "Full debug APK build completed successfully.",
+                "**Manual debug APK build:** " + (artifact ? "successful" : "artifact missing"),
                 "",
-                artifact
-                  ? `[Download APK](${artifactUrl})`
-                  : `[View build](${runUrl})`
+                "Commit: " + shortSha,
+                "",
+                artifact ? "[Download debug APK](" + artifactUrl + ")" : "[Inspect build](" + runUrl + ")",
+                "",
+                "Built on request, not on every commit. APK artifact retention: 7 days."
               ].join("\n");
             } else {
               body = [
                 marker,
-                "Full debug APK build failed.",
+                "**Manual debug APK build failed.**",
                 "",
-                `Logs: ${runUrl}`,
+                "Commit: " + shortSha,
                 "",
-                "Open the failed workflow run and expand the failed step to see the Gradle error."
+                "[Inspect failed build](" + runUrl + ")"
               ].join("\n");
             }
 
@@ -90,10 +106,9 @@ jobs:
               issue_number: pr.number,
               per_page: 100
             });
-            const existing = comments.find((comment) =>
-              comment.user?.type === "Bot" && comment.body?.includes(marker)
+            const existing = comments.find((item) =>
+              item.user?.type === "Bot" && item.body?.includes(marker)
             );
-
             if (existing) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
