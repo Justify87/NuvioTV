@@ -261,7 +261,8 @@ class TorrentService @Inject constructor(
     }
 
     private fun detachActiveStream(): DetachedStream {
-        sessionHistory.finish()
+        sessionHistory.finish(failed = vpnSafety.status.value != TorrentVpnSafety.Status.VERIFIED ||
+            _state.value is TorrentState.Error)
         val detached: Pair<DetachedStream, Job?> = synchronized(lifecycleLock) {
             streamGeneration += 1
             val value = DetachedStream(engine = engine, streamId = currentStreamId)
@@ -419,6 +420,7 @@ class TorrentService @Inject constructor(
                         statsJob?.cancel()
                         statsJob = null
                         _state.value = error
+                        sessionHistory.finish(failed = true)
                     }
                     NuvioEventType.StreamStopped -> synchronized(lifecycleLock) {
                         if (engine !== activeEngine) return@synchronized
@@ -435,6 +437,7 @@ class TorrentService @Inject constructor(
                         statsJob?.cancel()
                         statsJob = null
                         _state.value = error
+                        sessionHistory.finish(failed = true)
                     }
                     else -> Unit
                 }

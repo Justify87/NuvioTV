@@ -13,9 +13,40 @@ Target: NVIDIA Shield TV Pro (2019), Android TV 11 / API 30. Build configuration
 - A full dual-stack profile is required: IPv4 and IPv6 /0 routes. Partial profiles are rejected.
 - Mullvad verification uses an app-originated HTTPS call to `https://am.i.mullvad.net/json` and checks `mullvad_exit_ip == true`. A WireGuard handshake in the past 240 seconds is also required before Nuvio torrents can start.
 - Profile contents are AES/GCM encrypted using a hardware/OS-protected key in Android Keystore (where available). Files are written beneath `noBackupFilesDir`. The app already sets `allowBackup=false`.
-- The monitor examines current backend state and handshake every 10 seconds while verified. It does not issue continuous public IP requests.
+- The monitor samples WireGuard tunnel state and traffic counters every 5 seconds and rechecks Mullvad egress about once per minute. Verification older than 90 seconds is not shown as confirmed. A quiet tunnel may legitimately have an old handshake; checks do not mark it broken solely because it is idle.
 - A `TorrentVpnSafety` gate blocks native Nuvio Engine initialization, including cache operations. `TorrentService` observes loss of verified state and shuts the engine down. There is no deliberate direct-torrent fallback.
 - The VPN menu uses Nuvio's existing settings rows for D-Pad navigation, with import, selection, rename, delete, connect, disconnect, optional auto-connect, status and traffic data.
+
+## VPN monitoring and optional torrent statistics
+
+### New TV surfaces
+
+- A focusable VPN status button is available in the root-screen bottom-left corner, for both modern and legacy layouts.
+- The internal player has its own VPN shield action in the bottom control row.
+- A shared TV dialog displays verified/unknown/disconnected/error state, profile, endpoint, exit IP, country/city when returned by Mullvad, handshake, latest successful verification and a live traffic chart.
+- The optional mini indicator appears over video. Its behavior (off, problems only, always), position and size are controlled in **Settings → VPN & WireGuard** and stored in local preferences.
+- Both screens subscribe to the same Hilt-singleton WireGuardManager flows; no independent fake status flags.
+- The status summarizes app-observed evidence. It is NOT proof of leak-free behavior and it is NOT a kernel-enforced lockdown kill switch. Testing VPN revocation, Wi-Fi loss and DNS/IPv6 behavior on Shield remains necessary.
+- A newly launched connection requires both a Mullvad egress check and a recent handshake. Subsequent refreshes actively probe egress; an old idle handshake alone is not treated as a failure.
+- The graph shows per-tunnel counters sampled as approximately five-second throughput; it is not a torrent-only speed chart.
+
+### Torrent session monitor
+
+- **Playback → P2P** exposes an opt-in **Torrent-Sitzungsverlauf speichern** toggle (off by default) and a statistics dialog. The player shows the same dialog via the chart button when a native torrent is selected.
+- Live statistics come from the existing NuvioEngine stream/aggregate readings and are sampled no faster than 1 Hz: average and peak download rate, average upload rate, connected peers and seeds (peaks), received torrent payload bytes, and buffering events observed after playback has started.
+- The opt-in history is stored only in app-local SharedPreferences, capped at 40 completed sessions. History can be cleared directly. Disabling it prevents new disk records; previously saved entries remain until cleared.
+- The title comes from the selected torrent filename (when available). Displayed resolution is explicitly a filename *hint*, not a codec or actual playback resolution measurement.
+- The short quality label is a heuristic derived from observed session measurements; it is not the global health of the swarm or independent tracker data. Per-peer speeds, full peer listings and completed sessions from before the feature was enabled are not available without additional native engine support.
+- An engine error or VPN loss during active playback marks the captured session as failed.
+
+### Verification / acceptance for this addition
+
+1. Mandatory CI compile and VPN/torrent unit tests must pass.
+2. Shield: verify red/gray/yellow/green transitions for connect, disconnect, permission revocation, Wi-Fi loss, egress failure, and later recovery. Check that playback and other Shield apps use the expected separate routes.
+3. Shield: exercise each player option using D-Pad and Back, including resuming playback without a phantom focused button; test HDR, subtitles, existing TorrentOverlay and stream-info overlays for collision.
+4. Shield: stream a legitimate test torrent, inspect live measurements, switch episodes, trigger a known VPN outage, confirm the gate closes and the history records the failed session.
+5. Shield: opt-in and opt-out of history, clear it, restart the app and confirm persistence/retention behavior.
+6. Confirm the entire UI remains non-blocking and inspect the relevant GitHub Actions artifact before installing.
 
 ### Android TV file import improvements
 
