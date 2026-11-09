@@ -209,11 +209,13 @@ internal fun WireGuardSettingsContent(
                 )
                 SettingsActionRow(
                     title = "Position im Player",
+                    subtitle = "Wähle die Ecke für das Overlay",
                     value = display.position.label,
                     onClick = { displayPrefs.cyclePosition() }
                 )
                 SettingsActionRow(
                     title = "Größe im Player",
+                    subtitle = "Sehr klein, klein oder normal",
                     value = display.size.label,
                     onClick = { displayPrefs.cycleSize() }
                 )
