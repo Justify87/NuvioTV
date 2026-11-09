@@ -101,6 +101,8 @@ fun VpnStatusDialog(
                 VpnRow("Profil", info.profile ?: "Nicht ausgewählt")
                 VpnRow("Server-Endpunkt", info.endpoint ?: "–")
                 VpnRow("Mullvad-Ausgangs-IP", info.exitIp ?: "Nicht bestätigt")
+                val location = listOfNotNull(info.exitCity, info.exitCountry).joinToString(", ")
+                if (location.isNotEmpty()) VpnRow("Ausgangsstandort", location)
                 VpnRow("Letzter Handshake", timestamp(info.lastHandshake))
                 VpnRow("Ausgang zuletzt geprüft", timestamp(info.lastVerifiedAt))
                 if (info.error != null) Text(info.error, color = Color(0xFFFF8888))

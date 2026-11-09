@@ -50,7 +50,9 @@ data class WireGuardInfo(
     val lastVerifiedAt: Long = 0L,
     val lastCheckedAt: Long = 0L,
     val downloadBytesPerSecond: Long = 0L,
-    val uploadBytesPerSecond: Long = 0L
+    val uploadBytesPerSecond: Long = 0L,
+    val exitCountry: String? = null,
+    val exitCity: String? = null
 )
 
 /**
@@ -71,9 +73,10 @@ class WireGuardManager @Inject constructor(
     private val tunnel = object : Tunnel {
         override fun getName(): String = "nuvio"
         override fun onStateChange(newState: Tunnel.State) {
-            if (newState == Tunnel.State.DOWN) {
+            if (newState == Tunnel.State.DOWN && safety.status.value != TorrentVpnSafety.Status.ERROR) {
                 safety.update(TorrentVpnSafety.Status.DISCONNECTED)
-                publish(status = TorrentVpnSafety.Status.DISCONNECTED, exitIp = null)
+                publish(status = TorrentVpnSafety.Status.DISCONNECTED, exitIp = null,
+                    lastVerifiedAt = 0L, downloadBytesPerSecond = 0L, uploadBytesPerSecond = 0L)
             }
         }
     }
@@ -163,7 +166,7 @@ class WireGuardManager @Inject constructor(
             withContext(Dispatchers.IO) { backend.setState(tunnel, Tunnel.State.UP, appScoped) }
             safety.update(TorrentVpnSafety.Status.TUNNEL_UP)
             // This app-originated request must leave through the VPN interface, not an ADB shell.
-            val exitIp = withContext(Dispatchers.IO) { checkMullvadEgress() }
+            val verifiedExit = withContext(Dispatchers.IO) { checkMullvadEgress() }
             val stats = withContext(Dispatchers.IO) { backend.getStatistics(tunnel) }
             val lastHandshake = latestHandshake(stats)
             check(isRecentHandshake(lastHandshake, System.currentTimeMillis())) {
@@ -176,7 +179,9 @@ class WireGuardManager @Inject constructor(
                 lastHandshake = lastHandshake,
                 receivedBytes = stats.totalRx(),
                 sentBytes = stats.totalTx(),
-                exitIp = exitIp,
+                exitIp = verifiedExit.ip,
+                exitCountry = verifiedExit.country,
+                exitCity = verifiedExit.city,
                 endpoint = config.toWgQuickString().lineSequence()
                     .firstOrNull { it.trimStart().startsWith("Endpoint", ignoreCase = true) }
                     ?.substringAfter('=')?.trim(),
@@ -191,7 +196,8 @@ class WireGuardManager @Inject constructor(
             throw cancel
         } catch (e: Exception) {
             safety.update(TorrentVpnSafety.Status.ERROR)
-            publish(status = TorrentVpnSafety.Status.ERROR, error = friendlyError(e), exitIp = null)
+            publish(status = TorrentVpnSafety.Status.ERROR, error = friendlyError(e), exitIp = null,
+                lastVerifiedAt = 0L, downloadBytesPerSecond = 0L, uploadBytesPerSecond = 0L)
             runCatching { withContext(Dispatchers.IO) { backend.setState(tunnel, Tunnel.State.DOWN, null) } }
             throw IllegalStateException(friendlyError(e))
         }
@@ -206,7 +212,10 @@ class WireGuardManager @Inject constructor(
             runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
         }
         publish(status = TorrentVpnSafety.Status.DISCONNECTED, exitIp = null, error = null,
-            lastVerifiedAt = 0L, endpoint = null)
+            lastVerifiedAt = 0L, endpoint = null, exitCountry = null, exitCity = null,
+            downloadBytesPerSecond = 0L, uploadBytesPerSecond = 0L)
+        mutableTraffic.value = emptyList()
+        previousSampleAt = 0L
     }
 
     /** User-requested egress verification: never reconnects or changes the selected profile. */
@@ -226,14 +235,15 @@ class WireGuardManager @Inject constructor(
     private suspend fun verifyEgress() {
         check(backend.getState(tunnel) == Tunnel.State.UP) { "VPN tunnel is down" }
         check(vpnConsentIntent() == null) { "Android VPN consent was revoked" }
-        val ip = withContext(Dispatchers.IO) { checkMullvadEgress() }
+        val verifiedExit = withContext(Dispatchers.IO) { checkMullvadEgress() }
         check(backend.getState(tunnel) == Tunnel.State.UP) { "VPN tunnel stopped during verification" }
         val stats = backend.getStatistics(tunnel)
         check(isRecentHandshake(latestHandshake(stats), System.currentTimeMillis())) {
             "No recent WireGuard handshake after the egress probe"
         }
         val now = System.currentTimeMillis()
-        publish(exitIp = ip, lastHandshake = latestHandshake(stats),
+        publish(exitIp = verifiedExit.ip, exitCountry = verifiedExit.country,
+            exitCity = verifiedExit.city, lastHandshake = latestHandshake(stats),
             receivedBytes = stats.totalRx(), sentBytes = stats.totalTx(),
             lastVerifiedAt = now, lastCheckedAt = now, error = null)
     }
@@ -268,7 +278,7 @@ class WireGuardManager @Inject constructor(
                 previousRx = rx
                 previousTx = tx
                 mutableTraffic.value = (mutableTraffic.value +
-                    VpnTrafficSample(nowWall, down, up)).takeLast(60)
+                    VpnTrafficSample(nowWall, down, up)).takeLast(12)
                 publish(lastHandshake = latestHandshake(stats), receivedBytes = rx, sentBytes = tx,
                     lastCheckedAt = nowWall, downloadBytesPerSecond = down, uploadBytesPerSecond = up)
                 // The last handshake may be old on an idle tunnel; test actual egress
@@ -288,7 +298,9 @@ class WireGuardManager @Inject constructor(
         }
     }
 
-    private fun checkMullvadEgress(): String {
+    private data class MullvadExit(val ip: String, val country: String?, val city: String?)
+
+    private fun checkMullvadEgress(): MullvadExit {
         val connection = URL("https://am.i.mullvad.net/json").openConnection() as HttpsURLConnection
         connection.connectTimeout = 7_000
         connection.readTimeout = 7_000
@@ -297,7 +309,13 @@ class WireGuardManager @Inject constructor(
             val response = connection.inputStream.bufferedReader().use { it.readText().take(8192) }
             val json = JSONObject(response)
             check(json.optBoolean("mullvad_exit_ip", false)) { "Connection is not using a Mullvad exit IP" }
-            return json.optString("ip", "").take(80)
+            val ip = json.optString("ip", "").trim().take(80)
+            check(ip.isNotEmpty()) { "Mullvad response contained no exit IP" }
+            return MullvadExit(
+                ip = ip,
+                country = json.optString("country", "").trim().take(60).ifBlank { null },
+                city = json.optString("city", "").trim().take(60).ifBlank { null }
+            )
         } finally {
             connection.disconnect()
         }
@@ -364,11 +382,13 @@ class WireGuardManager @Inject constructor(
         lastVerifiedAt: Long = mutableInfo.value.lastVerifiedAt,
         lastCheckedAt: Long = mutableInfo.value.lastCheckedAt,
         downloadBytesPerSecond: Long = mutableInfo.value.downloadBytesPerSecond,
-        uploadBytesPerSecond: Long = mutableInfo.value.uploadBytesPerSecond
+        uploadBytesPerSecond: Long = mutableInfo.value.uploadBytesPerSecond,
+        exitCountry: String? = mutableInfo.value.exitCountry,
+        exitCity: String? = mutableInfo.value.exitCity
     ) {
         mutableInfo.value = WireGuardInfo(status, profile, lastHandshake, receivedBytes,
             sentBytes, exitIp, error, endpoint, lastVerifiedAt, lastCheckedAt,
-            downloadBytesPerSecond, uploadBytesPerSecond)
+            downloadBytesPerSecond, uploadBytesPerSecond, exitCountry, exitCity)
     }
 
     companion object {
