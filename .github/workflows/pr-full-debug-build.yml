@@ -84,14 +84,17 @@ jobs:
             } >> "$GITHUB_ENV"
           fi
 
-      - name: Run mandatory VPN, torrent and updater tests; build fullDebug APK
+      - name: Run mandatory VPN, torrent and updater tests
         run: |
           ./gradlew :app:testFullDebugUnitTest \
             --tests 'com.nuvio.tv.core.vpn.*' \
             --tests 'com.nuvio.tv.core.torrent.*' \
             --tests 'com.nuvio.tv.ui.screens.settings.SettingsCatalogTest' \
             --tests 'com.nuvio.tv.updater.*' \
-            :app:assembleFullDebug --stacktrace
+            --stacktrace
+
+      - name: Build fullDebug APK after mandatory tests
+        run: ./gradlew :app:assembleFullDebug --stacktrace
 
       - name: Verify the output APK
         run: |
