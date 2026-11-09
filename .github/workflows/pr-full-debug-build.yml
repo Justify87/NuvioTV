@@ -52,6 +52,9 @@ jobs:
             touch local.dev.properties
           fi
 
+      - name: Validate Nuvio account QR login configuration
+        run: ./gradlew :app:verifyNuvioAuthConfig --stacktrace
+
       - name: Prepare consistent CI signing (optional)
         env:
           NUVIO_CI_KEYSTORE_BASE64: ${{ secrets.NUVIO_CI_KEYSTORE_BASE64 }}
