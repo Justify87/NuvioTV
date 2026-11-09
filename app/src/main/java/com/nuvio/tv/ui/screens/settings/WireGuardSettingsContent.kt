@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,9 @@ internal fun WireGuardSettingsContent(
     val info by vpn.info.collectAsStateWithLifecycle()
     val profiles by vpn.profiles.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf(vpn.selectedId) }
+    // An external file manager can import a profile while this screen is paused.
+    // Refresh the selection whenever WireGuardManager publishes a new profile list.
+    LaunchedEffect(profiles) { selected = vpn.selectedId }
     var autoConnect by remember { mutableStateOf(vpn.autoConnectEnabled) }
     var message by remember { mutableStateOf<String?>(null) }
     var renameId by remember { mutableStateOf<String?>(null) }
