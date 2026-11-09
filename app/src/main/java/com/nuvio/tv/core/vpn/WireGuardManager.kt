@@ -10,6 +10,8 @@ import com.wireguard.config.Config
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.net.Inet4Address
+import java.net.Inet6Address
 import java.security.KeyStore
 import java.util.UUID
 import javax.crypto.Cipher
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -85,7 +88,9 @@ class WireGuardManager @Inject constructor(
     /** Saves sensitive contents in an AES/GCM file protected with an Android Keystore key. */
     suspend fun importProfile(filename: String, raw: ByteArray): WireGuardProfile = withContext(Dispatchers.IO) {
         require(raw.size in 20..65536) { "Invalid WireGuard file size" }
-        val parsed = Config.parse(ByteArrayInputStream(raw))
+        val parsed = try { Config.parse(ByteArrayInputStream(raw)) } catch (_: Exception) {
+            throw IllegalArgumentException("Invalid WireGuard .conf file")
+        }
         validateFullTunnel(parsed)
         val id = UUID.randomUUID().toString()
         val name = filename.substringAfterLast('/').take(60).ifBlank { "WireGuard" }
@@ -186,7 +191,7 @@ class WireGuardManager @Inject constructor(
 
     /** Revalidate current tunnel state without an external connectivity probe. */
     private suspend fun monitorConnection() {
-        while (scope.isActive) {
+        while (currentCoroutineContext().isActive) {
             delay(10_000)
             if (safety.status.value != TorrentVpnSafety.Status.VERIFIED) break
             try {
@@ -219,8 +224,10 @@ class WireGuardManager @Inject constructor(
 
     private fun validateFullTunnel(config: Config) {
         require(config.peers.isNotEmpty()) { "WireGuard profile contains no peer" }
-        val routes = config.peers.flatMap { it.allowedIps }.map { it.toString() }.toSet()
-        require("0.0.0.0/0" in routes && "::/0" in routes) {
+        val routes = config.peers.flatMap { it.allowedIps }
+        val v4 = routes.any { it.mask == 0 && it.address is Inet4Address }
+        val v6 = routes.any { it.mask == 0 && it.address is Inet6Address }
+        require(v4 && v6) {
             "Full tunnel requires IPv4 and IPv6 default routes (0.0.0.0/0 and ::/0)"
         }
     }
@@ -283,7 +290,10 @@ class WireGuardManager @Inject constructor(
 
     private fun friendlyError(e: Exception): String = when (e) {
         is java.io.FileNotFoundException -> "Selected WireGuard profile is missing"
-        else -> e.message?.take(180) ?: "Unable to connect the WireGuard VPN"
+        is com.wireguard.config.BadConfigException -> "Invalid WireGuard profile"
+        is java.net.SocketTimeoutException -> "VPN exit verification timed out"
+        is java.net.UnknownHostException -> "VPN DNS lookup failed"
+        else -> "Unable to verify WireGuard and Mullvad connectivity"
     }
 
     private fun publish(
