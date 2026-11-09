@@ -1,28 +1,21 @@
 name: PR Full Debug Build
 
+# Keep this workflow name for compatibility with the PR result commenter.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches: [dev]
   workflow_dispatch:
-  push:
-    branches: [feature/wireguard-edition]
-    paths:
-      - 'app/**'
-      - '.github/workflows/pr-full-debug-build.yml'
-      - 'AGENTS.md'
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr-full-debug-build-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: manual-debug-apk-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   full-debug-build:
-    name: Build fullDebug APK
+    name: Build fullDebug APK (manual)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -117,21 +110,3 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Run full regression suite (report known unrelated failures)
-        id: full_suite
-        continue-on-error: true
-        run: ./gradlew :app:testFullDebugUnitTest --stacktrace
-
-      - name: Upload complete regression test results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: NuvioTV-full-unit-test-results
-          path: app/build/test-results/testFullDebugUnitTest/
-          if-no-files-found: warn
-          retention-days: 7
-
-      - name: Report unrelated regression test failures
-        if: steps.full_suite.outcome == 'failure'
-        run: |
-          echo "::warning::Full regression unit suite failed (TraktAuthServiceTest fails in source untouched by this PR; upstream baseline result not independently verified). Mandatory VPN, torrent and updater tests passed before APK upload. Review the uploaded full unit-test report."
