@@ -1,8 +1,10 @@
 package com.nuvio.tv.ui.screens.settings
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
 import android.net.VpnService
-import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +27,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.tv.core.vpn.TorrentVpnSafety
+import com.nuvio.tv.core.vpn.importWireGuardProfileFromUri
+import com.nuvio.tv.core.vpn.wireGuardImportErrorMessage
 import com.nuvio.tv.ui.theme.NuvioTheme
 import kotlinx.coroutines.launch
 import java.text.DateFormat
@@ -62,23 +66,33 @@ internal fun WireGuardSettingsContent(
         if (it.resultCode == Activity.RESULT_OK && VpnService.prepare(context) == null) connect()
         else message = "VPN permission was not granted"
     }
-    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            scope.launch {
-                runCatching {
-                    val filename = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                        ?.use { cursor ->
-                            if (cursor.moveToFirst()) cursor.getString(0) else null
-                        } ?: "Imported WireGuard.conf"
-                    val contents = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                        ?: error("Cannot read selected file")
-                    vpn.importProfile(filename, contents)
-                }.onSuccess {
-                    selected = it.id
-                    message = "WireGuard profile imported; connect to enable protection."
-                }.onFailure { message = "Import failed: ${it.message?.take(160)}" }
+    fun importSelectedUri(uri: Uri?) {
+        if (uri == null) return
+        scope.launch {
+            try {
+                val profile = importWireGuardProfileFromUri(context, vpn, uri)
+                selected = profile.id
+                message = "WireGuard-Profil importiert. VPN verbinden, um es zu aktivieren."
+            } catch (error: Exception) {
+                message = "Import fehlgeschlagen: ${wireGuardImportErrorMessage(error)}"
             }
         }
+    }
+
+    // ACTION_GET_CONTENT may expose compatible third-party file pickers such as
+    // FX in the Android chooser. The OS decides which installed apps appear.
+    val browserImporter = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val uri = result.data?.data ?: result.data?.clipData?.let {
+                if (it.itemCount > 0) it.getItemAt(0).uri else null
+            }
+            importSelectedUri(uri)
+        }
+    }
+
+    // Preserve the original Android DocumentsUI path as an explicit fallback.
+    val systemImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        importSelectedUri(uri)
     }
 
     if (renameId != null) {
@@ -167,9 +181,27 @@ internal fun WireGuardSettingsContent(
             SettingsGroupCard(modifier = Modifier.fillMaxWidth(), title = "WireGuard-Profile") {
                 SettingsActionRow(
                     title = "WireGuard-Konfiguration importieren",
-                    subtitle = "Lokale .conf-Datei über den Android-Dateidialog auswählen",
-                    onClick = { importer.launch(arrayOf("*/*")) }
+                    subtitle = "Datei-Explorer auswählen (z. B. FX, falls von Android angeboten)",
+                    onClick = {
+                        val selection = Intent(Intent.ACTION_GET_CONTENT).apply {
+                            addCategory(Intent.CATEGORY_OPENABLE)
+                            type = "*/*"
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        try {
+                            browserImporter.launch(Intent.createChooser(selection, "Datei-Explorer auswählen"))
+                        } catch (_: ActivityNotFoundException) {
+                            message = "Kein passender Datei-Explorer gefunden. Android-Dateidialog geöffnet."
+                            systemImporter.launch(arrayOf("*/*"))
+                        }
+                    }
                 )
+                SettingsActionRow(
+                    title = "Mit Android-Dateidialog importieren",
+                    subtitle = "Alternative, falls ein anderer Datei-Explorer nicht angeboten wird",
+                    onClick = { systemImporter.launch(arrayOf("*/*")) }
+                )
+                SettingsNote("Alternativ: .conf-Datei in FX File Explorer öffnen und über Teilen → Nuvio TV VPN importieren.")
             }
         }
         items(profiles, key = { it.id }) { profile ->
