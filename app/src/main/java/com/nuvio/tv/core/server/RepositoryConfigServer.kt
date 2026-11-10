@@ -6,7 +6,6 @@ import com.google.gson.reflect.TypeToken
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 
 class RepositoryConfigServer(
     private val context: Context,
@@ -31,14 +30,14 @@ class RepositoryConfigServer(
     enum class ChangeStatus { PENDING, CONFIRMED, REJECTED }
 
     private val gson = Gson()
-    private val pendingChanges = ConcurrentHashMap<String, PendingRepoChange>()
+    private val pendingChanges = PendingRepositoryChangeStore()
 
     fun confirmChange(id: String) {
-        pendingChanges[id]?.status = ChangeStatus.CONFIRMED
+        pendingChanges.confirm(id)
     }
 
     fun rejectChange(id: String) {
-        pendingChanges[id]?.status = ChangeStatus.REJECTED
+        pendingChanges.reject(id)
     }
 
     override fun serve(session: IHTTPSession): Response {
@@ -81,9 +80,7 @@ class RepositoryConfigServer(
 
     private fun handleRepositoryUpdate(session: IHTTPSession): Response {
         // Auto-reject any stale pending changes so a new request can proceed
-        pendingChanges.values
-            .filter { it.status == ChangeStatus.PENDING }
-            .forEach { it.status = ChangeStatus.REJECTED }
+        pendingChanges.rejectPending()
 
         val bodyMap = HashMap<String, String>()
         session.parseBody(bodyMap)
@@ -103,7 +100,7 @@ class RepositoryConfigServer(
         }
 
         val change = PendingRepoChange(proposedUrls = urls)
-        pendingChanges[change.id] = change
+        pendingChanges.add(change)
         onChangeProposed(change)
 
         val response = mapOf("status" to "pending_confirmation", "id" to change.id)
@@ -112,8 +109,7 @@ class RepositoryConfigServer(
 
     private fun serveChangeStatus(uri: String): Response {
         val id = uri.removePrefix("/api/status/")
-        val change = pendingChanges[id]
-        val status = change?.status?.name?.lowercase() ?: "not_found"
+        val status = pendingChanges.status(id)?.name?.lowercase() ?: "not_found"
         val response = mapOf("status" to status)
         return newFixedLengthResponse(Response.Status.OK, "application/json", gson.toJson(response))
     }
