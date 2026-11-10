@@ -20,12 +20,24 @@ class TvChannelPreferences @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val channelIdKey = longPreferencesKey("continue_watching_channel_id")
+    private val nextUpChannelIdKey = longPreferencesKey("next_up_channel_id")
 
     suspend fun getChannelId(): Long? =
         context.tvChannelDataStore.data.map { it[channelIdKey] }.first()
 
     suspend fun setChannelId(id: Long) {
         context.tvChannelDataStore.edit { it[channelIdKey] = id }
+    }
+
+    suspend fun getNextUpChannelId(): Long? =
+        context.tvChannelDataStore.data.map { it[nextUpChannelIdKey] }.first()
+
+    suspend fun setNextUpChannelId(id: Long) {
+        context.tvChannelDataStore.edit { it[nextUpChannelIdKey] = id }
+    }
+
+    suspend fun clearNextUpChannelId() {
+        context.tvChannelDataStore.edit { it.remove(nextUpChannelIdKey) }
     }
 
     suspend fun clearChannelId() {

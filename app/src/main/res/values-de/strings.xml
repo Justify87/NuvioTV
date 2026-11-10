@@ -1,6 +1,7 @@
 <resources>
     <string name="app_name">Nuvio</string>
     <string name="tv_channel_continue_watching">Continue Watching</string>
+    <string name="tv_channel_next_up">Next Up</string>
     <string name="type_movie">Film</string>
     <string name="type_movies">Movies</string>
     <string name="type_series">Serie</string>

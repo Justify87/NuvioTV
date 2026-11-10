@@ -2,6 +2,7 @@
     <string name="app_name">Nuvio TV VPN</string>
     <string name="wireguard_share_target_label">Nuvio TV VPN – WireGuard importieren</string>
     <string name="tv_channel_continue_watching">Continue Watching</string>
+    <string name="tv_channel_next_up">Next Up</string>
     <string name="type_movie">Movie</string>
     <string name="type_movies">Movies</string>
     <string name="type_series">Series</string>
