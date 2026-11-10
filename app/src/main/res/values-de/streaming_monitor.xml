@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sm_download">Download</string>
+    <string name="sm_upload">Upload</string>
+    <string name="sm_peers">Verbundene Peers</string>
+    <string name="sm_seeds">Verbundene Seeder</string>
+    <string name="sm_buffer_events">Erfasste Pufferunterbrechungen</string>
+    <string name="sm_buffer_note">Vorläufig: noch ohne First-Frame-Bezug</string>
+    <string name="sm_connected_only">Aktuell verbunden, nicht der ganze Schwarm</string>
+    <string name="sm_source_torrent">Torrent-Engine · Byte pro Sekunde</string>
+    <string name="sm_chart_title">Download / Upload · letzte 60 Sekunden</string>
+    <string name="sm_chart_max">Skala: 0 bis %1$s</string>
+    <string name="sm_chart_sample_count">%1$d echte Messpunkte</string>
+    <string name="sm_chart_60_seconds_ago">−60 s</string>
+    <string name="sm_chart_30_seconds_ago">−30 s</string>
+    <string name="sm_chart_last_sample">Letzte Messung</string>
+    <string name="sm_chart_disclaimer">Messwerte aus der Torrent-Engine im Arbeitsspeicher. Kein VPN-Durchsatz. Fehlende Messwerte werden nicht ergänzt.</string>
+    <string name="sm_no_samples">Noch keine Live-Messwerte</string>
+    <string name="sm_status_loading">Torrent-Status wird geladen…</string>
+    <string name="sm_status_disabled">P2P ist deaktiviert</string>
+    <string name="sm_status_idle">Keine aktive Torrent-Wiedergabe</string>
+    <string name="sm_status_connecting">Verbindung wird aufgebaut</string>
+    <string name="sm_status_streaming">Aktiver Torrent</string>
+    <string name="sm_status_error">Torrent-Fehler</string>
+    <string name="sm_waiting_for_rates">Warte auf die ersten Messwerte der Engine.</string>
+    <string name="sm_filename_unknown">Der aktive Dateiname ist nicht bekannt.</string>
+    <string name="sm_recorded_sessions">Aufgezeichnete Sitzungen</string>
+    <string name="sm_recording_on">Verlaufsaufzeichnung aktiviert</string>
+    <string name="sm_recording_off">Verlaufsaufzeichnung deaktiviert</string>
+    <string name="sm_stability_title">Ohne erfasste Unterbrechung</string>
+    <string name="sm_stability_basis">%1$d von %2$d gemessenen Sitzungen</string>
+    <string name="sm_stability_disclaimer">Nenner: gespeicherte Sitzungen mit Messpunkten und positiver Dauer, einschließlich späterer Fehler. Zähler: ohne erfasste Unterbrechung oder Fehler. Keine Wiedergabe-Erfolgsquote; First-Frame-Abgleich folgt in M04.</string>
+    <string name="sm_no_data">Keine Daten</string>
+    <string name="sm_privacy_heading">Verlauf und Datenschutz</string>
+    <string name="sm_privacy_on">Der Verlauf bleibt lokal auf diesem Gerät. Die 60-Sekunden-Kurve liegt nur im Arbeitsspeicher.</string>
+    <string name="sm_privacy_off">Die Verlaufsaufzeichnung ist freiwillig und bleibt aus. Du kannst sie in den Torrent-Einstellungen aktivieren. Vorhandene Einträge bleiben sichtbar; die Live-Kurve wird nicht gespeichert.</string>
+</resources>
