@@ -35,7 +35,7 @@ internal fun PlaybackSettingsSections(
     onOpenDialog: (PlaybackDialog) -> Unit,
     onMemorySettingChanged: () -> Unit,
     onClearTorrentCache: () -> Unit,
-    onOpenStreamingMonitor: () -> Unit,
+    onOpenStreamingMonitor: () -> Unit = {},
     initialFocusRequester: FocusRequester? = null
 ) {
     val sections = visiblePlaybackSections(playerSettings)
