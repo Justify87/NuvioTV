@@ -124,8 +124,10 @@ class AndroidTvChannelSyncService @Inject constructor(
             CustomPosterScreen.TV_RECOMMENDATIONS,
             layoutPreferenceDataStore.customPosterEnabledScreens.first()
         )
-        val channelItems = buildChannelItems(inProgressItems, nextUpItems, resolvedSettings)
-            .withCustomPosterArt(posterPattern)
+        val selection = buildChannelItems(inProgressItems, nextUpItems, resolvedSettings)
+        val channelItems = selection.map { it.progress }.withCustomPosterArt(posterPattern)
+        val nextUpChannelItems = selection.filter { it.isNextUp }
+            .map { it.progress }.withCustomPosterArt(posterPattern)
 
         Log.d(
             TAG,
@@ -133,6 +135,9 @@ class AndroidTvChannelSyncService @Inject constructor(
                 "(${inProgressItems.size} in-progress, ${nextUpItems.size} next-up raw)"
         )
         manager.reconcile(channelItems)
+        // The legacy channel remains unchanged. Only explicitly identified aired Next Up
+        // items enter the new channel; no episode is inferred from playback timestamps.
+        manager.reconcileNextUp(nextUpChannelItems)
 
         runCatching {
             tvRecommendationManager.updateWatchNext(channelItems)
@@ -148,11 +153,13 @@ class AndroidTvChannelSyncService @Inject constructor(
      *   to avoid showing content that can't be played)
      * - Deduplication (in-progress takes priority over next-up for same contentId)
      */
+    private data class ChannelItem(val progress: WatchProgress, val isNextUp: Boolean)
+
     private fun buildChannelItems(
         inProgress: List<CachedInProgressItem>,
         nextUp: List<CachedNextUpItem>,
         settings: ChannelSettingsSnapshot
-    ): List<WatchProgress> {
+    ): List<ChannelItem> {
         val cutoffMs = if (settings.daysCap == TraktSettingsDataStore.CONTINUE_WATCHING_DAYS_CAP_ALL) {
             null
         } else {
@@ -167,7 +174,7 @@ class AndroidTvChannelSyncService @Inject constructor(
         // Filter next-up items: exclude unaired (launcher should only show playable content),
         // respect days cap and dismissed keys
         val filteredNextUp = nextUp
-            .filter { it.hasAired }  // Never show unaired in launcher — can't be played
+            .filter { isVerifiedAiredNextUp(it) } // Only aired episodes with valid episode identity
             .filter { cutoffMs == null || it.lastWatched >= cutoffMs }
             .filter { nextUpDismissKey(it) !in settings.dismissedNextUp }
 
@@ -178,20 +185,20 @@ class AndroidTvChannelSyncService @Inject constructor(
         // Sort: in-progress by lastWatched, next-up by sortTimestamp (which is
         // releaseTimestamp for release alerts, lastWatched for regular next-up).
         // This mirrors the in-app CW order for aired content in both sort modes.
-        data class SortableItem(val watchProgress: WatchProgress, val sortKey: Long)
+        data class SortableItem(val watchProgress: WatchProgress, val sortKey: Long, val isNextUp: Boolean)
 
         val inProgressSorted = filteredInProgress.map { item ->
-            SortableItem(item.toWatchProgress(settings.useEpisodeThumbnails), item.lastWatched)
+            SortableItem(item.toWatchProgress(settings.useEpisodeThumbnails), item.lastWatched, false)
         }
 
         val nextUpSorted = deduplicatedNextUp.map { item ->
-            SortableItem(item.toWatchProgress(settings.useEpisodeThumbnails), item.sortTimestamp)
+            SortableItem(item.toWatchProgress(settings.useEpisodeThumbnails), item.sortTimestamp, true)
         }
 
         return (inProgressSorted + nextUpSorted)
             .sortedByDescending { it.sortKey }
-            .map { it.watchProgress }
-            .distinctBy { it.contentId }
+            .distinctBy { it.watchProgress.contentId }
+            .map { ChannelItem(it.watchProgress, it.isNextUp) }
     }
 
     private fun nextUpDismissKey(item: CachedNextUpItem): String {
@@ -210,6 +217,13 @@ class AndroidTvChannelSyncService @Inject constructor(
         val useEpisodeThumbnails: Boolean
     )
 }
+
+/**
+ * Nuvio has already resolved the next episode and whether it has aired.
+ * Never infer availability from engagement time, sort order or a missing air date.
+ */
+internal fun isVerifiedAiredNextUp(item: CachedNextUpItem): Boolean =
+    item.hasAired && item.contentId.isNotBlank() && item.season >= 0 && item.episode > 0
 
 /**
  * Converts a [CachedInProgressItem] to [WatchProgress] for the launcher channel.
