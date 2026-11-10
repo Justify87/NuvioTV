@@ -31,7 +31,6 @@ import com.nuvio.tv.core.vpn.TorrentVpnSafety
 import com.nuvio.tv.core.vpn.importWireGuardProfileFromUri
 import com.nuvio.tv.core.vpn.wireGuardImportErrorMessage
 import com.nuvio.tv.ui.theme.NuvioTheme
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -58,6 +57,7 @@ internal fun WireGuardSettingsContent(
     val vpn = viewModel.wireGuard
     val displayPrefs = viewModel.displayPreferences
     val display by displayPrefs.state.collectAsStateWithLifecycle()
+    val actionState by viewModel.uiState.collectAsStateWithLifecycle()
     val traffic by vpn.traffic.collectAsStateWithLifecycle()
     var statusDialogOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -70,30 +70,14 @@ internal fun WireGuardSettingsContent(
     LaunchedEffect(profiles) { selected = vpn.selectedId }
     var autoConnect by remember { mutableStateOf(vpn.autoConnectEnabled) }
     var message by remember { mutableStateOf<String?>(null) }
-    var vpnActionInProgress by remember { mutableStateOf(false) }
+    var consentInProgress by remember { mutableStateOf(false) }
+    val vpnActionInProgress = consentInProgress || actionState.actionInProgress
     var renameId by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
 
-    fun runVpnAction(successMessage: String?, action: suspend () -> Unit) {
-        if (vpnActionInProgress) return
-        vpnActionInProgress = true
-        scope.launch {
-            try {
-                action()
-                message = successMessage
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (error: Exception) {
-                message = error.message ?: "VPN action failed"
-            } finally {
-                vpnActionInProgress = false
-            }
-        }
-    }
-    fun connect() = runVpnAction(null) { vpn.connect() }
     val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        vpnActionInProgress = false
-        if (it.resultCode == Activity.RESULT_OK && VpnService.prepare(context) == null) connect()
+        consentInProgress = false
+        if (it.resultCode == Activity.RESULT_OK && VpnService.prepare(context) == null) viewModel.connect()
         else message = "VPN permission was not granted"
     }
     fun importSelectedUri(uri: Uri?) {
@@ -130,7 +114,10 @@ internal fun WireGuardSettingsContent(
             info = info,
             traffic = traffic,
             onDismiss = { statusDialogOpen = false },
-            onRefresh = { scope.launch { runCatching { vpn.refreshVerification() } } }
+            onRefresh = {
+                message = null
+                viewModel.refreshVerification()
+            }
         )
     }
     if (renameId != null) {
@@ -191,14 +178,16 @@ internal fun WireGuardSettingsContent(
                             dispatchVpnSettingsAction(
                                 status = info.status,
                                 onRefresh = {
-                                    runVpnAction("VPN-Verbindung erfolgreich überprüft") { vpn.refreshVerification() }
+                                    message = null
+                                    viewModel.refreshVerification()
                                 },
                                 onConnect = {
-                                    val request = vpn.vpnConsentIntent()
+                                    message = null
+                                    val request = VpnService.prepare(context)
                                     if (request != null) {
-                                        vpnActionInProgress = true
+                                        consentInProgress = true
                                         consent.launch(request)
-                                    } else connect()
+                                    } else viewModel.connect()
                                 }
                             )
                         }
@@ -217,7 +206,12 @@ internal fun WireGuardSettingsContent(
                 SettingsActionRow(
                     title = "VPN trennen",
                     subtitle = "Stoppt und sperrt alle Nuvio-Torrents",
-                    onClick = { scope.launch { vpn.disconnect() } }
+                    onClick = {
+                        if (!vpnActionInProgress) {
+                            message = null
+                            viewModel.disconnect()
+                        }
+                    }
                 )
                 if (info.lastHandshake > 0) {
                     SettingsNote("Letzter Handshake: ${DateFormat.getDateTimeInstance().format(Date(info.lastHandshake))}")
@@ -330,10 +324,10 @@ internal fun WireGuardSettingsContent(
                 SettingsNote("Ein erfolgreicher Verbindungstest ersetzt keinen Leak-Test auf der Shield.")
             }
         }
-        if (message != null || info.error != null) {
+        if (message != null || actionState.message != null || info.error != null) {
             item {
                 SettingsGroupCard(modifier = Modifier.fillMaxWidth(), title = "Hinweis") {
-                    SettingsNote(message ?: info.error.orEmpty())
+                    SettingsNote(message ?: actionState.message ?: info.error.orEmpty())
                 }
             }
         }
