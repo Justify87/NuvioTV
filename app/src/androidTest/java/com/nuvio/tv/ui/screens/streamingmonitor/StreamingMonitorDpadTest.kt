@@ -2,6 +2,8 @@ package com.nuvio.tv.ui.screens.streamingmonitor
 
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
@@ -11,6 +13,7 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.key.pressKey
 import androidx.test.platform.app.InstrumentationRegistry
 import com.nuvio.tv.R
+import com.nuvio.tv.core.torrent.TorrentState
 import com.nuvio.tv.ui.theme.NuvioTheme
 import org.junit.Rule
 import org.junit.Test
@@ -43,5 +46,33 @@ class StreamingMonitorDpadTest {
         composeRule.onNode(historyTab).assertIsSelected()
         composeRule.onNode(historyTab).performKeyInput { pressKey(Key.DirectionRight) }
         composeRule.onNode(connectionTab).assertIsFocused()
+    }
+
+    @Test
+    fun `overview shows genuine empty state and allows dpad entry`() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val overview = context.getString(R.string.streaming_monitor_tab_overview)
+        val idle = context.getString(R.string.sm_status_idle)
+        val noData = context.getString(R.string.sm_no_data)
+
+        composeRule.setContent {
+            NuvioTheme {
+                StreamingMonitorScreenContent(
+                    overviewState = monitorUiState(
+                        TorrentState.Idle, null, emptyList(), emptyList(),
+                        recordingEnabled = false, p2pEnabled = true
+                    )
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        composeRule.onNode(hasText(idle)).assertExists()
+        composeRule.onNode(hasText(noData)).assertExists()
+
+        val overviewTab = hasText(overview) and hasClickAction()
+        composeRule.onNode(overviewTab).assertIsFocused()
+        composeRule.onNode(overviewTab).performKeyInput { pressKey(Key.DirectionDown) }
+        composeRule.waitForIdle()
+        composeRule.onNode(overviewTab).assertIsNotFocused()
     }
 }
