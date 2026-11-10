@@ -40,7 +40,7 @@ class TorrentService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val torrentSettings: TorrentSettings,
     private val vpnSafety: TorrentVpnSafety,
-    private val sessionHistory: TorrentSessionHistory
+    internal val sessionHistory: TorrentSessionHistory
 ) {
     companion object {
         private const val TAG = "TorrentService"
@@ -161,7 +161,7 @@ class TorrentService @Inject constructor(
                 "filenameHint=${!filename.isNullOrBlank()} requestTrackers=${trackers.size}"
         )
         stopStreamNow(shutdownEngine = false)
-        sessionHistory.begin(filename)
+        val historySessionId = sessionHistory.begin(filename)
         val generation = beginStreamGeneration()
 
         var activeEngine: NuvioEngine? = null
@@ -235,14 +235,15 @@ class TorrentService @Inject constructor(
             logPhase(startedAtMs, "route_ready", "generation=$generation")
             stream.url
         } catch (cancellation: CancellationException) {
-            sessionHistory.finish(failed = true)
+            sessionHistory.finish(failed = false, sessionId = historySessionId,
+                outcome = TorrentSessionOutcome.CANCELLED_BEFORE_PLAYBACK)
             Log.w(TorrentDiagnosticTag, "start phase=${phase.get()} cancelled elapsedMs=${elapsedSince(startedAtMs)}")
             withContext(NonCancellable) {
                 cleanupFailedStart(generation, activeEngine, preparedStream, attached, TorrentState.Idle)
             }
             throw cancellation
         } catch (error: Exception) {
-            sessionHistory.finish(failed = true)
+            sessionHistory.finish(failed = true, sessionId = historySessionId)
             Log.e(
                 TorrentDiagnosticTag,
                 "start phase=${phase.get()} failed elapsedMs=${elapsedSince(startedAtMs)} " +
