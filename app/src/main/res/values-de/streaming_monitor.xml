@@ -34,4 +34,12 @@
     <string name="sm_privacy_heading">Verlauf und Datenschutz</string>
     <string name="sm_privacy_on">Der Verlauf bleibt lokal auf diesem Gerät. Die 60-Sekunden-Kurve liegt nur im Arbeitsspeicher.</string>
     <string name="sm_privacy_off">Die Verlaufsaufzeichnung ist freiwillig und bleibt aus. Du kannst sie in den Torrent-Einstellungen aktivieren. Vorhandene Einträge bleiben sichtbar; die Live-Kurve wird nicht gespeichert.</string>
+
+    <string name="sm_press_ok_for_details">OK: Details</string>
+    <string name="sm_kpi_detail_heading">Was wird gemessen?</string>
+    <string name="sm_detail_download">Momentane Nutzdaten-Downloadrate der Torrent-Engine in binären Byte-Einheiten. Kein VPN-Durchsatz und kein Downloadfortschritt des gesamten Torrents.</string>
+    <string name="sm_detail_upload">Momentane Uploadrate der Torrent-Engine. Ohne aktive Messung ist der Wert unbekannt.</string>
+    <string name="sm_detail_peers">Anzahl der momentan verbundenen Peers, nicht aller verfügbaren Teilnehmer im Schwarm.</string>
+    <string name="sm_detail_seeds">Anzahl der aktuell verbundenen Seeder, nicht aller bei Trackern bekannten Seeder.</string>
+    <string name="sm_detail_buffer">Bereits von den vorhandenen Player-Hooks erfasste Pufferereignisse in dieser Torrent-Sitzung. Erst M04 ergänzt First-Frame-Bezug, Ausschlüsse für Pause/Suche und die Pufferdauer.</string>
 </resources>
