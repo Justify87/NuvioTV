@@ -41,6 +41,7 @@ class TorrentPlaybackTelemetryTest {
         history.markFirstFrame(id, elapsedMs = 1_900L)
         assertEquals(620L, history.live.value?.firstFrameMs)
         assertEquals(0, history.live.value?.rebufferCount)
+        history.markPlaybackFinished(id)
         history.finish(sessionId = id)
         assertEquals(TorrentSessionOutcome.FINISHED, history.history.value.single().outcome)
     }
@@ -111,6 +112,16 @@ class TorrentPlaybackTelemetryTest {
         assertTrue(entry.rebufferIncomplete)
         assertEquals(0, entry.rebufferCount)
         assertEquals("Messung unvollständig", assessStreamingSession(entry).label)
+    }
+
+    @Test fun manualStopAfterFirstFrameIsNotNaturalCompletion() {
+        val id = history.begin("Sample.mkv")
+        history.markFirstFrame(id, 1_500L)
+        elapsed = 2_200L
+        history.finish(sessionId = id)
+        val saved = history.history.value.single()
+        assertEquals(TorrentSessionOutcome.UNKNOWN, saved.outcome)
+        assertEquals("Kurze Beobachtung", assessStreamingSession(saved).label)
     }
 
     @Test fun terminalFailureDominatesNormalStop() {
