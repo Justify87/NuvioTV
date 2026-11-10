@@ -5,7 +5,7 @@ import com.nuvio.tv.core.torrent.TorrentSessionStats
 import com.nuvio.tv.core.torrent.TorrentState
 import java.util.Locale
 
-/** No player first-frame or post-first-frame buffering correlation exists until M04. */
+/** Session health is based only on correlated player events, never filename hints. */
 internal enum class TorrentPhase { DISABLED, IDLE, CONNECTING, STREAMING, ERROR }
 
 internal data class TorrentLiveRates(
@@ -23,20 +23,22 @@ internal data class RecordedStability(
 }
 
 /**
- * Numerator: saved sessions with >0 samples, positive duration, no recorded buffering,
- * and no terminal failure. Denominator: ALL saved sessions with >0 samples and positive
- * duration, including sessions that later failed. Unmeasured starts are excluded, never
- * treated as clean playback. This is NOT a playback-success/first-frame rate.
+ * Denominator: persisted v2 sessions with a verified first frame and complete
+ * post-frame rebuffer count/duration. Failed finishes remain in the denominator.
+ * Numerator: those finished normally with no observed interruptions.
+ * Legacy sessions, startup failures and unknown timing cannot raise the KPI.
  */
 internal fun recordedStability(history: List<TorrentSessionStats>): RecordedStability {
-    var eligible = 0
-    var clean = 0
-    for (session in history) {
-        if (session.samples <= 0 || session.durationMs <= 0L) continue
-        eligible++
-        if (!session.failed && session.bufferEvents == 0) clean++
+    val eligible = history.filter {
+        it.telemetryVersion >= 2 && it.firstFrameMs != null &&
+            it.rebufferCount != null && it.rebufferTotalMs != null &&
+            !it.rebufferIncomplete
     }
-    return RecordedStability(eligible, clean)
+    val clean = eligible.count {
+        it.outcome == com.nuvio.tv.core.torrent.TorrentSessionOutcome.FINISHED &&
+            it.rebufferCount == 0
+    }
+    return RecordedStability(eligible.size, clean)
 }
 
 /** This is the torrent-engine byte rate, never the app VPN throughput. */
@@ -123,7 +125,7 @@ internal fun monitorUiState(
         samplePoints = if (measured && live != null) points else emptyList(),
         connectedPeers = stream?.peers?.takeIf { it >= 0 },
         connectedSeeds = stream?.seeds?.takeIf { it >= 0 },
-        recordedBufferInterruptions = live?.bufferEvents?.takeIf { active && it >= 0 },
+        recordedBufferInterruptions = live?.rebufferCount?.takeIf { active && it >= 0 },
         recentCount = history.size,
         savedSessions = history,
         summary = recordedStability(history),

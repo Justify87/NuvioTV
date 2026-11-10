@@ -20,6 +20,9 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.nuvio.tv.R
 import com.nuvio.tv.core.torrent.TorrentRateSample
+import com.nuvio.tv.core.torrent.TorrentSessionStats
+import com.nuvio.tv.core.torrent.TorrentSessionOutcome
+import com.nuvio.tv.core.torrent.assessStreamingSession
 import com.nuvio.tv.ui.theme.NuvioTheme
 import java.text.DateFormat
 import java.util.Date
@@ -90,11 +93,7 @@ internal fun StreamingMonitorSessionDetail(
                     color = NuvioTheme.colors.TextSecondary
                 )
                 Text(
-                    stringResource(
-                        if (entry.isLive) R.string.sm_history_active
-                        else if (session.failed) R.string.sm_history_failed
-                        else R.string.sm_history_finished
-                    ) + " · " + session.rating,
+                    sessionOutcomeText(session, entry.isLive),
                     color = NuvioTheme.colors.TextSecondary
                 )
             }
@@ -114,8 +113,57 @@ internal fun StreamingMonitorSessionDetail(
                 DetailMetric(R.string.sm_history_peers_peak, if (measured) session.peakPeers.toString() else unknown)
                 DetailMetric(R.string.sm_history_seeds_peak, if (measured) session.peakSeeds.toString() else unknown)
                 DetailMetric(R.string.sm_history_downloaded, if (measured) formatTorrentBytes(session.downloadedBytes) else unknown)
-                DetailMetric(R.string.sm_history_interruptions, session.bufferEvents.toString())
+                if (session.telemetryVersion < 2) {
+                    DetailMetric(R.string.sm_history_interruptions, session.bufferEvents.toString())
+                    DetailMetric(R.string.sm_quality_legacy, session.rating)
+                }
                 DetailMetric(R.string.sm_history_samples, session.samples.toString())
+            }
+        }
+        item(key = "detail-quality") {
+            MonitorFocusableCard(Modifier.fillMaxWidth()) {
+                val media = session.mediaProfile
+                Text(
+                    stringResource(R.string.sm_quality_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = NuvioTheme.colors.TextPrimary
+                )
+                val unavailable = stringResource(R.string.sm_quality_unavailable)
+                DetailMetric(R.string.sm_quality_resolution, media?.resolution ?: unavailable)
+                DetailMetric(R.string.sm_quality_video_codec, media?.videoCodec ?: unavailable)
+                DetailMetric(R.string.sm_quality_hdr, media?.hdr?.takeIf { it.isNotEmpty() }
+                    ?.joinToString(", ") ?: unavailable)
+                DetailMetric(R.string.sm_quality_audio_codec, media?.audioCodec ?: unavailable)
+                DetailMetric(R.string.sm_quality_audio_channels, media?.audioChannels?.toString() ?: unavailable)
+                DetailMetric(R.string.sm_quality_video_bitrate,
+                    media?.videoBitrateBitsPerSecond?.let { "$it bit/s" } ?: unavailable)
+                Text(stringResource(R.string.sm_quality_media_source),
+                    style = MaterialTheme.typography.bodySmall, color = NuvioTheme.colors.TextSecondary)
+            }
+        }
+        item(key = "detail-stability") {
+            MonitorFocusableCard(Modifier.fillMaxWidth()) {
+                val assessment = assessStreamingSession(session)
+                val unavailable = stringResource(R.string.sm_quality_unavailable)
+                Text(stringResource(R.string.sm_quality_stability),
+                    style = MaterialTheme.typography.titleLarge, color = NuvioTheme.colors.TextPrimary)
+                Text(assessment.label,
+                    style = MaterialTheme.typography.titleMedium, color = NuvioTheme.colors.TextPrimary)
+                Text(assessment.explanation,
+                    style = MaterialTheme.typography.bodyMedium, color = NuvioTheme.colors.TextSecondary)
+                DetailMetric(R.string.sm_quality_start,
+                    session.firstFrameMs?.let { String.format(Locale.getDefault(), "%.2f s", it / 1000.0) }
+                        ?: unavailable)
+                DetailMetric(R.string.sm_quality_rebuffers, session.rebufferCount?.toString() ?: unavailable)
+                DetailMetric(R.string.sm_quality_buffer_duration,
+                    session.rebufferTotalMs?.let { String.format(Locale.getDefault(), "%.2f s", it / 1000.0) }
+                        ?: unavailable)
+                assessment.downloadToVideoBitrateRatio?.let { ratio ->
+                    DetailMetric(R.string.sm_quality_ratio,
+                        String.format(Locale.getDefault(), "%.2f×", ratio))
+                    Text(stringResource(R.string.sm_quality_ratio_note),
+                        style = MaterialTheme.typography.bodySmall, color = NuvioTheme.colors.TextSecondary)
+                }
             }
         }
         if (entry.isLive && liveSamples.isNotEmpty()) {
@@ -150,7 +198,10 @@ internal fun StreamingMonitorSessionDetail(
                     color = NuvioTheme.colors.TextSecondary
                 )
                 Text(
-                    stringResource(R.string.sm_history_sources_rating),
+                    stringResource(
+                        if (session.telemetryVersion >= 2) R.string.sm_quality_timing_source
+                        else R.string.sm_history_sources_rating
+                    ),
                     color = NuvioTheme.colors.TextSecondary
                 )
                 Text(
@@ -180,3 +231,16 @@ private fun DetailMetric(label: Int, value: String) {
             color = NuvioTheme.colors.TextPrimary)
     }
 }
+
+/** Playback outcome is separate from the old torrent-service failed boolean. */
+@Composable
+internal fun sessionOutcomeText(session: TorrentSessionStats, live: Boolean): String =
+    stringResource(when {
+        live -> R.string.sm_history_active
+        session.telemetryVersion < 2 && session.failed -> R.string.sm_outcome_failed
+        session.telemetryVersion < 2 -> R.string.sm_outcome_legacy
+        session.outcome == TorrentSessionOutcome.CANCELLED_BEFORE_PLAYBACK -> R.string.sm_outcome_cancelled
+        session.outcome == TorrentSessionOutcome.FAILED -> R.string.sm_outcome_failed
+        session.outcome == TorrentSessionOutcome.FINISHED -> R.string.sm_outcome_finished
+        else -> R.string.sm_outcome_unknown
+    })

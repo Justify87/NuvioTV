@@ -194,6 +194,7 @@ internal fun PlayerRuntimeController.launchTorrentSourceStream(
                 trackers = trackers
             )
 
+            monitorSessionId = torrentService.sessionHistory.live.value?.sessionId
             currentStreamUrl = localUrl
             currentHeaders = emptyMap()
             currentStreamMimeType = null

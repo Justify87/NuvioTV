@@ -112,6 +112,27 @@ internal fun StreamingMonitorOverview(
                 )
             }
         }
+        item(key = "playback-quality") {
+            val current = state.activeSession
+            Row(horizontalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)) {
+                MonitorFocusableCard(Modifier.weight(1f).heightIn(min = 120.dp)) {
+                    Text(stringResource(R.string.sm_quality_start),
+                        style = MaterialTheme.typography.titleMedium, color = NuvioTheme.colors.TextSecondary)
+                    Text(current?.firstFrameMs?.let {
+                        String.format(java.util.Locale.getDefault(), "%.2f s", it / 1000.0)
+                    } ?: stringResource(R.string.sm_quality_unavailable),
+                        style = MaterialTheme.typography.headlineMedium, color = NuvioTheme.colors.TextPrimary)
+                }
+                MonitorFocusableCard(Modifier.weight(1f).heightIn(min = 120.dp)) {
+                    Text(stringResource(R.string.sm_quality_buffer_duration),
+                        style = MaterialTheme.typography.titleMedium, color = NuvioTheme.colors.TextSecondary)
+                    Text(current?.rebufferTotalMs?.let {
+                        String.format(java.util.Locale.getDefault(), "%.2f s", it / 1000.0)
+                    } ?: stringResource(R.string.sm_quality_unavailable),
+                        style = MaterialTheme.typography.headlineMedium, color = NuvioTheme.colors.TextPrimary)
+                }
+            }
+        }
         if (selectedDetailRes != null) {
             item(key = "selected-kpi-details") {
                 MonitorFocusableCard(Modifier.fillMaxWidth()) {
@@ -164,7 +185,7 @@ internal fun StreamingMonitorOverview(
                     )
                     Text(
                         stringResource(
-                            R.string.sm_stability_basis,
+                            R.string.sm_kpi_basis_v2,
                             state.summary.withoutRecordedInterruption,
                             state.summary.sessionsWithMeasurements
                         ),

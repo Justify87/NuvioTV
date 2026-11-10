@@ -2,6 +2,7 @@ package com.nuvio.tv.ui.screens.streamingmonitor
 
 import com.nuvio.tv.core.torrent.TorrentRateSample
 import com.nuvio.tv.core.torrent.TorrentSessionStats
+import com.nuvio.tv.core.torrent.TorrentSessionOutcome
 import com.nuvio.tv.core.torrent.TorrentState
 import java.util.Locale
 import org.junit.Assert.assertEquals
@@ -18,7 +19,12 @@ class StreamingMonitorOverviewTest {
         buffers: Int = 0
     ) = TorrentSessionStats(
         title = "Example", startedAtMs = 1_000L, durationMs = durationMs,
-        samples = samples, failed = failed, bufferEvents = buffers
+        samples = samples, failed = failed, bufferEvents = buffers,
+        telemetryVersion = 2,
+        outcome = if (failed) TorrentSessionOutcome.FAILED else TorrentSessionOutcome.FINISHED,
+        firstFrameMs = if (durationMs > 0 && samples > 0) 1_000L else null,
+        rebufferCount = if (durationMs > 0 && samples > 0) buffers else null,
+        rebufferTotalMs = if (durationMs > 0 && samples > 0) buffers * 900L else null
     )
 
     private fun streaming(
@@ -63,7 +69,7 @@ class StreamingMonitorOverviewTest {
         )
     }
 
-    @Test fun metricDenominatorIncludesMeasuredFailuresButNotUnmeasuredStartups() {
+    @Test fun metricDenominatorIncludesVerifiedFailuresButNotUnobservedStarts() {
         val result = recordedStability(
             listOf(session(samples = 0), session(), session(buffers = 1),
                 session(failed = true), session(durationMs = 0))
@@ -73,6 +79,20 @@ class StreamingMonitorOverviewTest {
         assertEquals(33, result.percentage)
         assertNull(recordedStability(emptyList()).percentage)
         assertNull(recordedStability(listOf(session(samples = 0))).percentage)
+    }
+
+    @Test fun legacySessionsNeverInflateNewStallFreeMetric() {
+        val legacy = TorrentSessionStats("Old session", startedAtMs = 5L,
+            samples = 100, bufferEvents = 0, durationMs = 400_000L)
+        val result = recordedStability(listOf(legacy, session()))
+        assertEquals(1, result.sessionsWithMeasurements)
+        assertEquals(1, result.withoutRecordedInterruption)
+    }
+
+    @Test fun incompletePlaybackCannotInflateGoodSessions() {
+        val incomplete = session().copy(rebufferIncomplete = true)
+        val result = recordedStability(listOf(incomplete))
+        assertNull(result.percentage)
     }
 
     @Test fun p2pDisabledAndIdleCannotDisplayStaleLiveData() {

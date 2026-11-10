@@ -170,6 +170,9 @@ internal fun PlayerRuntimeController.initializePlayer(
         _uiState.update { it.copy(error = context.getString(R.string.player_error_no_stream_url), showLoadingOverlay = false) }
         return
     }
+    val monitorId = if (isTorrentStream) {
+        monitorSessionId ?: torrentService.sessionHistory.live.value?.sessionId
+    } else null
     mpvMediaLoadPrepared = false
     val afrPreflightToken = afrPreflightGate.token()
 
@@ -1163,6 +1166,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                         reason: Int
                     ) {
                         if (isReleasingPlayer || reason != Player.DISCONTINUITY_REASON_SEEK) return
+                        monitorId?.let { torrentService.sessionHistory.onRebufferEnd(it, resumed = false) }
                         // Holding the seek button emits a discontinuity per step, and reading the
                         // span set on each one is real work on a cache holding thousands of spans.
                         val seekedToMs = newPosition.positionMs
@@ -1215,6 +1219,20 @@ internal fun PlayerRuntimeController.initializePlayer(
                             )
                         }
                         updateAudioControlAvailability()
+
+                        // Shared player transitions, never Compose recompositions.
+                        monitorId?.let { id ->
+                            val eligible = hasRenderedFirstFrame && playWhenReady && !userPausedManually &&
+                                !isInBackground && !suppressBufferingUiForSeek &&
+                                !seekBufferingUiDeferred && !isScrubbingModeActive
+                            if (playbackState == Player.STATE_BUFFERING && eligible) {
+                                torrentService.sessionHistory.onRebufferStart(id)
+                            } else {
+                                torrentService.sessionHistory.onRebufferEnd(
+                                    id, resumed = playbackState == Player.STATE_READY && eligible
+                                )
+                            }
+                        }
 
                         // Rebuffer telemetry: a rebuffer is STATE_BUFFERING entered
                         // AFTER the first frame (initial startup buffering is excluded).
@@ -1422,6 +1440,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                             tryShowParentalGuide()
                             emitScrobbleStart()
                         } else {
+                            if (userPausedManually || isInBackground) {
+                                monitorId?.let { torrentService.sessionHistory.onRebufferEnd(it, resumed = false) }
+                            }
                             if (userPausedManually) schedulePauseOverlay() else cancelPauseOverlay()
                             if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
                                 stopProgressUpdates()
@@ -1443,6 +1464,10 @@ internal fun PlayerRuntimeController.initializePlayer(
 
                     override fun onTracksChanged(tracks: Tracks) {
                         updateAvailableTracks(tracks)
+                        monitorId?.let { torrentService.sessionHistory.updateMediaInfo(
+                            it, exoMediaInfo(this@apply.videoFormat, this@apply.audioFormat)
+                                .asTorrentMediaProfile()
+                        ) }
                     }
 
                     override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
@@ -1482,6 +1507,13 @@ internal fun PlayerRuntimeController.initializePlayer(
                         finishLoadingDiagnostics("first_frame_rendered")
 
                         if (isFirstFrame) {
+                            monitorId?.let {
+                                torrentService.sessionHistory.markFirstFrame(it)
+                                torrentService.sessionHistory.updateMediaInfo(
+                                    it, exoMediaInfo(this@apply.videoFormat, this@apply.audioFormat)
+                                        .asTorrentMediaProfile()
+                                )
+                            }
                             currentDiagnostics = recordFirstFrameDiagnostics(this@apply, currentDiagnostics, playerSettings)
                             loadExoChapters()
                         }
@@ -1668,6 +1700,7 @@ internal fun PlayerRuntimeController.initializePlayer(
                             playbackAnalyticsDiagnostics.onRebufferEnded(this@apply, rebufferTotalMs, lastRebufferMs)
                         }
 
+                        monitorId?.let { torrentService.sessionHistory.markPlaybackFailed(it) }
                         val errorDiagnostics = currentDiagnostics.copy(
                             rebufferCount = rebufferCount,
                             rebufferTotalMs = rebufferTotalMs,
