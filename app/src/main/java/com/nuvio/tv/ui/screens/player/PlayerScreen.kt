@@ -12,7 +12,6 @@ import androidx.compose.ui.layout.boundsInWindow
 import android.graphics.RectF
 import com.nuvio.tv.ui.screens.detail.formatPlaybackTime
 import com.nuvio.tv.ui.theme.NuvioMotion
-import kotlinx.coroutines.delay
 
 import com.nuvio.tv.ui.theme.NuvioTheme
 import com.nuvio.tv.ui.theme.accentBrush
@@ -176,15 +175,12 @@ import com.nuvio.tv.domain.model.StreamBadge
 import com.nuvio.tv.domain.model.Subtitle
 import com.nuvio.tv.domain.model.WatchProgress
 import com.nuvio.tv.ui.components.LoadingIndicator
-import android.text.format.DateFormat
 import com.nuvio.tv.ui.util.rememberRawSvgPainter
-import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.lazy.rememberLazyListState
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.media3.exoplayer.ExoPlayer
@@ -3731,58 +3727,6 @@ private fun SeekOverlayHost(viewModel: PlayerViewModel, chapters: List<PlayerCha
         bufferedPosition = playbackTimeline.bufferedPosition,
         chapters = chapters
     )
-}
-
-@Composable
-private fun PlayerClockOverlay(
-    currentPosition: Long,
-    duration: Long,
-    playbackSpeed: Float,
-    isLive: Boolean = false
-) {
-    var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
-    val context = LocalContext.current
-    val timeFormatter = remember(context) { DateFormat.getTimeFormat(context) }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            val current = System.currentTimeMillis()
-            nowMs = current
-            val delayMs = (1_000L - (current % 1_000L)).coerceAtLeast(250L)
-            delay(delayMs)
-        }
-    }
-
-    val effectiveSpeed = playbackSpeed.takeIf { it > 0f } ?: 1f
-    val remainingMediaMs = (duration - currentPosition).coerceAtLeast(0L)
-    val remainingMs = kotlin.math.ceil(remainingMediaMs.toDouble() / effectiveSpeed.toDouble()).toLong()
-    val endTimeText = if (duration > 0L) {
-        timeFormatter.format(Date(nowMs + remainingMs))
-    } else {
-        "--:--"
-    }
-
-    Column(
-        modifier = Modifier
-            .padding(horizontal = NuvioTheme.spacing.xxs, vertical = NuvioTheme.spacing.xxs),
-        horizontalAlignment = Alignment.End
-    ) {
-        Text(
-            text = timeFormatter.format(Date(nowMs)),
-            style = MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            ),
-            color = Color.White.copy(alpha = 0.96f)
-        )
-        if (!isLive) {
-            Text(
-                text = stringResource(R.string.player_ends_at, endTimeText),
-                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 10.sp),
-                color = Color.White.copy(alpha = 0.78f)
-            )
-        }
-    }
 }
 
 @Composable
