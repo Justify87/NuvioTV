@@ -3,8 +3,10 @@ package com.nuvio.tv.ui.screens.streamingmonitor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNode
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.key.pressKey
 import androidx.test.platform.app.InstrumentationRegistry
@@ -27,15 +29,19 @@ class StreamingMonitorDpadTest {
             NuvioTheme { StreamingMonitorScreen() }
         }
         composeRule.waitForIdle()
-        composeRule.onNodeWithText(overview).assertIsSelected().assertIsFocused()
+        val overviewTab = hasText(overview) and hasClickAction()
+        val historyTab = hasText(history) and hasClickAction()
+        val connectionTab = hasText(connection) and hasClickAction()
 
-        composeRule.onNodeWithText(overview).performKeyInput { pressKey(Key.DirectionRight) }
-        composeRule.onNodeWithText(history).assertIsFocused()
-        composeRule.onNodeWithText(overview).assertIsSelected()
+        composeRule.onNode(overviewTab).assertIsSelected().assertIsFocused()
 
-        composeRule.onNodeWithText(history).performKeyInput { pressKey(Key.DirectionCenter) }
-        composeRule.onNodeWithText(history).assertIsSelected()
-        composeRule.onNodeWithText(history).performKeyInput { pressKey(Key.DirectionRight) }
-        composeRule.onNodeWithText(connection).assertIsFocused()
+        composeRule.onNode(overviewTab).performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.onNode(historyTab).assertIsFocused()
+        composeRule.onNode(overviewTab).assertIsSelected()
+
+        composeRule.onNode(historyTab).performKeyInput { pressKey(Key.DirectionCenter) }
+        composeRule.onNode(historyTab).assertIsSelected()
+        composeRule.onNode(historyTab).performKeyInput { pressKey(Key.DirectionRight) }
+        composeRule.onNode(connectionTab).assertIsFocused()
     }
 }
