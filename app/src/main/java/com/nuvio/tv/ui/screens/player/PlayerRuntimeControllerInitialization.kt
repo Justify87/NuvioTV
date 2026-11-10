@@ -1222,7 +1222,7 @@ internal fun PlayerRuntimeController.initializePlayer(
 
                         // Shared player transitions, never Compose recompositions.
                         monitorId?.let { id ->
-                            val eligible = hasRenderedFirstFrame && !userPausedManually &&
+                            val eligible = hasRenderedFirstFrame && playWhenReady && !userPausedManually &&
                                 !isInBackground && !suppressBufferingUiForSeek &&
                                 !seekBufferingUiDeferred && !isScrubbingModeActive
                             if (playbackState == Player.STATE_BUFFERING && eligible) {
