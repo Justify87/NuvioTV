@@ -76,7 +76,8 @@ internal fun StreamingMonitorHistory(
     firstContentRequester: FocusRequester,
     returnToTabsRequester: FocusRequester,
     modifier: Modifier = Modifier,
-    onContentFocusChanged: (Boolean) -> Unit
+    onContentFocusChanged: (Boolean) -> Unit,
+    onDetailVisibilityChanged: (Boolean) -> Unit = {}
 ) {
     val entries = remember(saved, live) { streamingHistoryEntries(saved, live) }
     val listState = rememberLazyListState()
@@ -87,6 +88,8 @@ internal fun StreamingMonitorHistory(
     var confirmClear by remember { mutableStateOf(false) }
     val selectedEntry = entries.firstOrNull { it.key == selectedKey }
     val hasSaved = saved.isNotEmpty()
+
+    LaunchedEffect(selectedEntry) { onDetailVisibilityChanged(selectedEntry != null) }
 
     BackHandler(enabled = confirmClear || selectedKey != null) {
         if (confirmClear) {
@@ -231,6 +234,25 @@ internal fun StreamingMonitorHistory(
                             if (data.samples > 0) formatTorrentRate(data.averageDownloadBps) else "—",
                             if (data.samples > 0) formatTorrentRate(data.peakDownloadBps) else "—"
                         ) + " · " + data.rating,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NuvioTheme.colors.TextSecondary
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.sm_history_row_network,
+                            if (data.samples > 0) formatTorrentRate(data.averageUploadBps) else "—",
+                            if (data.samples > 0) data.peakPeers.toString() else "—",
+                            if (data.samples > 0) data.peakSeeds.toString() else "—"
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = NuvioTheme.colors.TextSecondary
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.sm_history_row_volume,
+                            if (data.samples > 0) formatTorrentBytes(data.downloadedBytes) else "—",
+                            data.bufferEvents
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = NuvioTheme.colors.TextSecondary
                     )
