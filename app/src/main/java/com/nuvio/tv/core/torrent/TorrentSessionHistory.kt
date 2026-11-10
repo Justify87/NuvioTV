@@ -193,6 +193,42 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
         if (merged != previous) _live.value = current.copy(mediaProfile = merged)
     }
 
+    /** Start a post-first-frame interruption once, never from a recomposition. */
+    @Synchronized fun onRebufferStart(sessionId: String, elapsedMs: Long = SystemClock.elapsedRealtime()) {
+        val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
+        if (current.firstFrameMs == null || rebufferStartedElapsed != null || elapsedMs < startElapsed) return
+        rebufferStartedElapsed = elapsedMs
+    }
+
+    /** Only resumed playback counts as a completed stall; seek/pause/drop is discarded. */
+    @Synchronized fun onRebufferEnd(
+        sessionId: String, elapsedMs: Long = SystemClock.elapsedRealtime(), resumed: Boolean = true
+    ) {
+        val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
+        val start = rebufferStartedElapsed ?: return
+        rebufferStartedElapsed = null
+        if (!resumed || elapsedMs <= start || current.firstFrameMs == null) return
+        val count = (current.rebufferCount ?: 0) + 1
+        _live.value = current.copy(
+            rebufferCount = count,
+            rebufferTotalMs = (current.rebufferTotalMs ?: 0L) + (elapsedMs - start),
+            bufferEvents = count
+        )
+    }
+
+    @Synchronized fun markPlaybackFailed(sessionId: String) {
+        val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
+        _live.value = current.copy(outcome = TorrentSessionOutcome.FAILED, failed = true)
+    }
+
+    /** A guarded natural playback end, not simply a torrent disconnect. */
+    @Synchronized fun markPlaybackFinished(sessionId: String) {
+        val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
+        if (current.outcome != TorrentSessionOutcome.FAILED) {
+            _live.value = current.copy(outcome = TorrentSessionOutcome.FINISHED)
+        }
+    }
+
     /** Call may be frequent; sampling is capped at once per second to avoid UI churn. */
     @Synchronized fun sample(
         downloadBps: Long, uploadBps: Long, peers: Int, seeds: Int, downloadedBytes: Long
@@ -230,8 +266,9 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
         val chosen = when {
             failed || current.outcome == TorrentSessionOutcome.FAILED -> TorrentSessionOutcome.FAILED
             outcome != null -> outcome
+            current.outcome == TorrentSessionOutcome.FINISHED -> TorrentSessionOutcome.FINISHED
             current.firstFrameMs == null -> TorrentSessionOutcome.CANCELLED_BEFORE_PLAYBACK
-            else -> TorrentSessionOutcome.FINISHED
+            else -> TorrentSessionOutcome.UNKNOWN
         }
         val incomplete = rebufferStartedElapsed != null
         rebufferStartedElapsed = null
