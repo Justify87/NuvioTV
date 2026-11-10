@@ -5,7 +5,6 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
-import java.util.concurrent.ConcurrentHashMap
 
 class AddonConfigServer(
     private val context: Context,
@@ -21,14 +20,14 @@ class AddonConfigServer(
 ) : NanoHTTPD(port) {
 
     private val gson = Gson()
-    private val pendingChanges = ConcurrentHashMap<String, PendingAddonChange>()
+    private val pendingChanges = PendingAddonChangeStore()
 
     fun confirmChange(id: String) {
-        pendingChanges[id]?.status = AddonChangeStatus.CONFIRMED
+        pendingChanges.confirm(id)
     }
 
     fun rejectChange(id: String) {
-        pendingChanges[id]?.status = AddonChangeStatus.REJECTED
+        pendingChanges.reject(id)
     }
 
     override fun serve(session: IHTTPSession): Response {
@@ -155,9 +154,7 @@ class AddonConfigServer(
 
     private fun handleAddonUpdate(session: IHTTPSession): Response {
         // Auto-reject any stale pending changes so a new request can proceed
-        pendingChanges.values
-            .filter { it.status == AddonChangeStatus.PENDING }
-            .forEach { it.status = AddonChangeStatus.REJECTED }
+        pendingChanges.rejectPending()
 
         // Parse request body
         val bodyMap = HashMap<String, String>()
@@ -194,7 +191,7 @@ class AddonConfigServer(
             )
         }
 
-        pendingChanges[change.id] = change
+        pendingChanges.add(change)
         onChangeProposed(change)
 
         val response = mapOf("status" to "pending_confirmation", "id" to change.id)
@@ -203,8 +200,7 @@ class AddonConfigServer(
 
     private fun serveChangeStatus(uri: String): Response {
         val id = uri.removePrefix("/api/status/")
-        val change = pendingChanges[id]
-        val status = change?.status?.name?.lowercase() ?: "not_found"
+        val status = pendingChanges.status(id)?.name?.lowercase() ?: "not_found"
         val response = mapOf("status" to status)
         return newFixedLengthResponse(Response.Status.OK, "application/json; charset=utf-8", gson.toJson(response))
     }
