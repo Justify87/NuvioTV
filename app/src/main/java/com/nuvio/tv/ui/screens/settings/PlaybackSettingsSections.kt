@@ -35,6 +35,7 @@ internal fun PlaybackSettingsSections(
     onOpenDialog: (PlaybackDialog) -> Unit,
     onMemorySettingChanged: () -> Unit,
     onClearTorrentCache: () -> Unit,
+    onOpenStreamingMonitor: () -> Unit = {},
     initialFocusRequester: FocusRequester? = null
 ) {
     val sections = visiblePlaybackSections(playerSettings)
@@ -74,7 +75,8 @@ internal fun PlaybackSettingsSections(
                         onUpdate = onUpdate,
                         onOpenDialog = onOpenDialog,
                         onMemorySettingChanged = onMemorySettingChanged,
-                        onClearTorrentCache = onClearTorrentCache
+                        onClearTorrentCache = onClearTorrentCache,
+                        onOpenStreamingMonitor = onOpenStreamingMonitor
                     )
                 }
             }
@@ -93,7 +95,8 @@ private fun PlaybackSectionContent(
     onUpdate: PlaybackSettingsUpdate,
     onOpenDialog: (PlaybackDialog) -> Unit,
     onMemorySettingChanged: () -> Unit,
-    onClearTorrentCache: () -> Unit
+    onClearTorrentCache: () -> Unit,
+    onOpenStreamingMonitor: () -> Unit
 ) {
     when (section) {
         PlaybackSection.PLAYER -> PlaybackPlayerSection(playerSettings, releaseDecoderOnBackground, onUpdate, onOpenDialog)
@@ -105,7 +108,7 @@ private fun PlaybackSectionContent(
         PlaybackSection.SUBTITLES -> PlaybackSubtitlesSection(playerSettings, onUpdate, onOpenDialog)
         PlaybackSection.VIDEO -> PlaybackVideoSection(playerSettings, transparentLetterbox, onUpdate, onOpenDialog)
         PlaybackSection.BUFFER_NETWORK -> PlaybackBufferNetworkSection(playerSettings, onUpdate, onMemorySettingChanged)
-        PlaybackSection.P2P -> PlaybackP2pSection(p2p, onUpdate, onOpenDialog, onClearTorrentCache)
+        PlaybackSection.P2P -> PlaybackP2pSection(p2p, onUpdate, onOpenDialog, onClearTorrentCache, onOpenStreamingMonitor)
     }
 }
 

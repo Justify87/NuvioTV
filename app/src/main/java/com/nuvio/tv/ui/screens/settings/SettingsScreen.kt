@@ -181,6 +181,7 @@ fun SettingsScreen(
     onNavigateToSupportersContributors: () -> Unit = {},
     onNavigateToLicensesAttributions: () -> Unit = {},
     onNavigateToWatchParty: () -> Unit = {},
+    onNavigateToStreamingMonitor: () -> Unit = {},
     profileViewModel: ProfileSettingsViewModel = hiltViewModel(),
     experienceModeViewModel: ExperienceModeSettingsViewModel = hiltViewModel(),
     partyViewModel: PartyViewModel = hiltViewModel()
@@ -664,7 +665,8 @@ fun SettingsScreen(
                                 onNavigateToAuthQrSignIn = onNavigateToAuthQrSignIn,
                                 onNavigateToSupportersContributors = onNavigateToSupportersContributors,
                                 onNavigateToLicensesAttributions = onNavigateToLicensesAttributions,
-                                onNavigateToWatchParty = onNavigateToWatchParty
+                                onNavigateToWatchParty = onNavigateToWatchParty,
+                                onNavigateToStreamingMonitor = onNavigateToStreamingMonitor
                             )
                         }
                     }
@@ -824,7 +826,8 @@ fun SettingsScreen(
                         onNavigateToAuthQrSignIn = onNavigateToAuthQrSignIn,
                         onNavigateToSupportersContributors = onNavigateToSupportersContributors,
                         onNavigateToLicensesAttributions = onNavigateToLicensesAttributions,
-                        onNavigateToWatchParty = onNavigateToWatchParty
+                        onNavigateToWatchParty = onNavigateToWatchParty,
+                                onNavigateToStreamingMonitor = onNavigateToStreamingMonitor
                     )
                 }
             }
@@ -854,7 +857,8 @@ private fun SettingsDetailPane(
     onNavigateToAuthQrSignIn: () -> Unit,
     onNavigateToSupportersContributors: () -> Unit,
     onNavigateToLicensesAttributions: () -> Unit,
-    onNavigateToWatchParty: () -> Unit
+    onNavigateToWatchParty: () -> Unit,
+    onNavigateToStreamingMonitor: () -> Unit
 ) {
     when (selectedCategory) {
         SettingsCategory.EXPERIENCE -> EssentialAdvancedSettingsContent(
@@ -906,6 +910,7 @@ private fun SettingsDetailPane(
             )
         } else {
             PlaybackSettingsContent(
+                onOpenStreamingMonitor = onNavigateToStreamingMonitor,
                 initialFocusRequester = if (allowDetailAutofocus) {
                     contentFocusRequesters[SettingsCategory.PLAYBACK]
                 } else {

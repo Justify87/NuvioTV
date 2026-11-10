@@ -4,11 +4,8 @@ import android.text.format.Formatter
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import com.nuvio.tv.NuvioApplication
-import com.nuvio.tv.ui.components.TorrentHistoryDialog
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -32,7 +29,8 @@ internal fun PlaybackP2pSection(
     p2p: P2pSettingsUi,
     onUpdate: PlaybackSettingsUpdate,
     onOpenDialog: (PlaybackDialog) -> Unit,
-    onClearTorrentCache: () -> Unit
+    onClearTorrentCache: () -> Unit,
+    onOpenStreamingMonitor: () -> Unit
 ) {
     val context = LocalContext.current
     val sessionHistory = remember(context) {
@@ -40,16 +38,6 @@ internal fun PlaybackP2pSection(
     }
     val recordHistory by sessionHistory.enabled.collectAsState()
     val history by sessionHistory.history.collectAsState()
-    val live by sessionHistory.live.collectAsState()
-    val samples by sessionHistory.samples.collectAsState()
-    var showHistoryDialog by remember { mutableStateOf(false) }
-    if (showHistoryDialog) {
-        TorrentHistoryDialog(
-            live = live, history = history, samples = samples,
-            onDismiss = { showHistoryDialog = false },
-            onClear = { sessionHistory.clear() }
-        )
-    }
     SettingsToggleRow(
         title = stringResource(R.string.p2p_consent_enable),
         subtitle = null,
@@ -75,10 +63,10 @@ internal fun PlaybackP2pSection(
         onToggle = { sessionHistory.setEnabled(!recordHistory) }
     )
     SettingsActionRow(
-        title = "Torrent-Statistiken und Verlauf",
-        subtitle = "Download, Upload, Peers, Seeder und Sitzungsqualität",
-        value = "${history.size} Sitzungen",
-        onClick = { showHistoryDialog = true }
+        title = stringResource(R.string.sm_settings_open_title),
+        subtitle = stringResource(R.string.sm_settings_open_subtitle),
+        value = stringResource(R.string.sm_history_count, history.size),
+        onClick = onOpenStreamingMonitor
     )
     SettingsActionRow(
         title = stringResource(R.string.settings_p2p_profile_title),

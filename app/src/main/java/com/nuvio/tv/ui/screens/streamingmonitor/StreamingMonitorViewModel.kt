@@ -56,6 +56,9 @@ class StreamingMonitorViewModel @Inject constructor(
         initialValue = StreamingMonitorUiState()
     )
 
+    /** Clearing changes only local saved entries; active playback and opt-in are untouched. */
+    fun clearSavedHistory() = sessionHistory.clear()
+
     private data class CoreSnapshot(
         val torrent: com.nuvio.tv.core.torrent.TorrentState,
         val live: com.nuvio.tv.core.torrent.TorrentSessionStats?,

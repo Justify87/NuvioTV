@@ -72,7 +72,6 @@ import androidx.compose.material.icons.filled.ClosedCaption
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.ShowChart
-import com.nuvio.tv.ui.components.TorrentHistoryDialog
 import com.nuvio.tv.NuvioApplication
 import com.nuvio.tv.core.vpn.VpnHealth
 import com.nuvio.tv.core.vpn.VpnDisplayMode
@@ -253,10 +252,6 @@ fun PlayerScreen(
     var vpnStatusOpen by remember { mutableStateOf(false) }
     val vpnScope = rememberCoroutineScope()
     val torrentSessions = remember(context) { (context.applicationContext as NuvioApplication).torrentSessionHistory }
-    val torrentLive by torrentSessions.live.collectAsState()
-    val torrentHistory by torrentSessions.history.collectAsState()
-    val torrentSamples by torrentSessions.samples.collectAsState()
-    var torrentStatsDetailsOpen by remember { mutableStateOf(false) }
     var torrentHasPlayed by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.isTorrentStream, uiState.isPlaying) {
         if (!uiState.isTorrentStream) torrentHasPlayed = false
@@ -390,8 +385,6 @@ fun PlayerScreen(
         if (externalHandoffInProgress) return@handleBackPress
         if (vpnStatusOpen) {
             vpnStatusOpen = false
-        } else if (torrentStatsDetailsOpen) {
-            torrentStatsDetailsOpen = false
         } else if (postPlayRecommendationState.canReturnToPlayer && !uiState.playbackEnded) {
             returnToPlayerFromPostPlay()
             viewModel.hideControls()
@@ -1435,14 +1428,6 @@ fun PlayerScreen(
             )
         }
 
-        if (torrentStatsDetailsOpen) {
-            TorrentHistoryDialog(
-                live = torrentLive, history = torrentHistory,
-                samples = torrentSamples,
-                onDismiss = { torrentStatsDetailsOpen = false },
-                onClear = { torrentSessions.clear() }
-            )
-        }
         if (vpnStatusOpen) {
             VpnStatusDialog(
                 info = vpnInfo, traffic = vpnTraffic,
@@ -1746,7 +1731,9 @@ fun PlayerScreen(
                     viewModel.onEvent(PlayerEvent.OnShowStreamInfo)
                 },
                 onShowVpnStatus = { vpnStatusOpen = true },
-                onShowTorrentStats = { torrentStatsDetailsOpen = true },
+                onShowTorrentStats = {
+                    android.widget.Toast.makeText(context, R.string.sm_player_hint, android.widget.Toast.LENGTH_LONG).show()
+                },
                 vpnHealth = vpnInfo.health(),
                 onResetHideTimer = {
                     viewModel.scheduleHideControls()
@@ -3185,7 +3172,7 @@ private fun PlayerControlsOverlay(
                     if (uiState.isTorrentStream) {
                         ControlButton(
                             icon = Icons.Default.ShowChart,
-                            contentDescription = "Torrent-Statistiken",
+                            contentDescription = stringResource(R.string.sm_player_action),
                             onClick = onShowTorrentStats,
                             upFocusRequester = progressUpTarget,
                             onDownKey = onHideControls,
