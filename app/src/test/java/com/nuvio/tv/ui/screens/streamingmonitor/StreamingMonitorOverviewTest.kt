@@ -99,6 +99,18 @@ class StreamingMonitorOverviewTest {
         assertFalse(output.hasEngineMeasurement)
     }
 
+    @Test fun streamingBeforeFirstMeasurementDoesNotInventZeroRatesOrPeers() {
+        val output = monitorUiState(
+            streaming(0L, 0L), session(samples = 0), emptyList(), emptyList(),
+            recordingEnabled = false, p2pEnabled = true
+        )
+        assertEquals(TorrentPhase.STREAMING, output.torrentPhase)
+        assertNull(output.liveRates)
+        assertNull(output.connectedPeers)
+        assertNull(output.connectedSeeds)
+        assertFalse(output.hasEngineMeasurement)
+    }
+
     @Test fun streamingShowsActualRatesWhileHistoryRecordingOff() {
         val sample = TorrentRateSample(1_000, 0, 1024, 4)
         val output = monitorUiState(
