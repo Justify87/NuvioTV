@@ -33,7 +33,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun PlaybackSettingsScreen(
     viewModel: PlaybackSettingsViewModel = hiltViewModel(),
-    onBackPress: () -> Unit = {}
+    onBackPress: () -> Unit = {},
+    onOpenStreamingMonitor: () -> Unit = {}
 ) {
     BackHandler { onBackPress() }
 
@@ -41,14 +42,15 @@ fun PlaybackSettingsScreen(
         title = stringResource(R.string.playback_title),
         subtitle = stringResource(R.string.playback_subtitle)
     ) {
-        PlaybackSettingsContent(viewModel = viewModel)
+        PlaybackSettingsContent(viewModel = viewModel, onOpenStreamingMonitor = onOpenStreamingMonitor)
     }
 }
 
 @Composable
 fun PlaybackSettingsContent(
     viewModel: PlaybackSettingsViewModel = hiltViewModel(),
-    initialFocusRequester: FocusRequester? = null
+    initialFocusRequester: FocusRequester? = null,
+    onOpenStreamingMonitor: () -> Unit = {}
 ) {
     val playerSettings by viewModel.playerSettings.collectAsStateWithLifecycle(initialValue = PlayerSettings())
     val transparentLetterbox by viewModel.transparentLetterbox.collectAsStateWithLifecycle(initialValue = false)
@@ -113,6 +115,7 @@ fun PlaybackSettingsContent(
                 onUpdate = onUpdate,
                 onOpenDialog = { openDialog = it },
                 onMemorySettingChanged = { memoryUsageTrigger++ },
+                onOpenStreamingMonitor = onOpenStreamingMonitor,
                 onClearTorrentCache = {
                     torrentCacheClearResult = null
                     torrentCacheClearFailed = false

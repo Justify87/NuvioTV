@@ -1282,7 +1282,8 @@ private fun PlaybackNavHost(
                 onNavigateToLicensesAttributions = {
                     navController.navigate(Screen.LicensesAttributions.route)
                 },
-                onNavigateToWatchParty = { navController.navigate(Screen.WatchParty.createRoute()) }
+                onNavigateToWatchParty = { navController.navigate(Screen.WatchParty.createRoute()) },
+                onNavigateToStreamingMonitor = { navController.navigate(Screen.StreamingMonitor.route) { launchSingleTop = true } }
             )
         }
 
@@ -1330,7 +1331,8 @@ private fun PlaybackNavHost(
 
         composable(Screen.PlaybackSettings.route) {
             PlaybackSettingsScreen(
-                onBackPress = { navController.popBackStack() }
+                onBackPress = { navController.popBackStack() },
+                onOpenStreamingMonitor = { navController.navigate(Screen.StreamingMonitor.route) { launchSingleTop = true } }
             )
         }
 
