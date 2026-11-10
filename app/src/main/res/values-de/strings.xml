@@ -2314,4 +2314,6 @@
     <string name="sm_settings_open_title">Streaming-Monitor öffnen</string>
     <string name="sm_settings_open_subtitle">Hauptmenüseite mit Live-Übersicht, Sitzungsverlauf und Details</string>
     <string name="sm_player_hint">Sitzungsstatistiken findest du im Streaming-Monitor des Hauptmenüs. Wiedergabe läuft weiter.</string>
+    <string name="sm_history_row_network">Upload Ø %1$s · Peers Peak %2$s · Seeder Peak %3$s</string>
+    <string name="sm_history_row_volume">Geladen %1$s · Unterbrechungen %2$d</string>
 </resources>
