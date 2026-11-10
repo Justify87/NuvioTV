@@ -24,6 +24,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,6 +61,27 @@ data class WireGuardInfo(
 /** Only the loss of the currently observed default network matters. */
 internal fun shouldHandleNetworkLoss(observed: Network?, lost: Network): Boolean =
     observed == lost
+
+/** Cleanup must finish even when the connecting coroutine has already been cancelled. */
+internal suspend fun abortWireGuardConnect(
+    cancellation: CancellationException,
+    cleanup: suspend () -> Unit
+): Nothing {
+    withContext(NonCancellable) { cleanup() }
+    throw cancellation
+}
+
+/** Called with the manager mutex already held; callers must not acquire it again. */
+internal suspend fun teardownWireGuardConnection(
+    safety: TorrentVpnSafety,
+    resetLocalState: () -> Unit,
+    stopBackend: suspend () -> Unit
+): Boolean {
+    safety.update(TorrentVpnSafety.Status.DISCONNECTED)
+    resetLocalState()
+    // Always attempt DOWN: a cancelled dispatcher switch may hide a completed UP call.
+    return runCatching { stopBackend() }.isSuccess
+}
 
 /**
  * Embedded WireGuard; VpnService is supplied by the upstream WireGuard tunnel AAR.
@@ -241,30 +263,44 @@ class WireGuardManager @Inject constructor(
             monitor = scope.launch { monitorConnection() }
             mutableInfo.value
         } catch (cancel: CancellationException) {
-            safety.update(TorrentVpnSafety.Status.DISCONNECTED)
-            throw cancel
+            abortWireGuardConnect(cancel) { stopAndResetConnection() }
         } catch (e: Exception) {
-            safety.update(TorrentVpnSafety.Status.ERROR)
-            publish(status = TorrentVpnSafety.Status.ERROR, error = friendlyError(e), exitIp = null,
-                lastVerifiedAt = 0L, downloadBytesPerSecond = 0L, uploadBytesPerSecond = 0L)
-            runCatching { withContext(Dispatchers.IO) { backend.setState(tunnel, Tunnel.State.DOWN, null) } }
-            throw IllegalStateException(friendlyError(e))
+            val message = friendlyError(e)
+            val stopped = withContext(NonCancellable) { stopAndResetConnection() }
+            if (stopped) {
+                safety.update(TorrentVpnSafety.Status.ERROR)
+                publish(status = TorrentVpnSafety.Status.ERROR, error = message)
+            }
+            throw IllegalStateException(message, e)
         }
     }
 
-    suspend fun disconnect() = lock.withLock {
-        safety.update(TorrentVpnSafety.Status.DISCONNECTED)
-        monitor?.cancel()
-        monitor = null
-        withContext(Dispatchers.IO) {
-            // A failed disconnect does not re-authorize torrent activity.
-            runCatching { backend.setState(tunnel, Tunnel.State.DOWN, null) }
+    private suspend fun stopAndResetConnection(): Boolean {
+        val stopped = teardownWireGuardConnection(
+            safety = safety,
+            resetLocalState = {
+                monitor?.cancel()
+                monitor = null
+                mutableInfo.value = WireGuardInfo()
+                mutableTraffic.value = emptyList()
+                previousSampleAt = 0L
+                previousRx = 0L
+                previousTx = 0L
+            },
+            stopBackend = {
+                withContext(Dispatchers.IO) { backend.setState(tunnel, Tunnel.State.DOWN, null) }
+            }
+        )
+        if (!stopped) {
+            safety.update(TorrentVpnSafety.Status.ERROR)
+            publish(status = TorrentVpnSafety.Status.ERROR, error = "Unable to stop WireGuard tunnel")
         }
-        publish(status = TorrentVpnSafety.Status.DISCONNECTED, exitIp = null, error = null,
-            lastVerifiedAt = 0L, endpoint = null, exitCountry = null, exitCity = null,
-            downloadBytesPerSecond = 0L, uploadBytesPerSecond = 0L)
-        mutableTraffic.value = emptyList()
-        previousSampleAt = 0L
+        return stopped
+    }
+
+    suspend fun disconnect() = lock.withLock {
+        withContext(NonCancellable) { stopAndResetConnection() }
+        Unit
     }
 
     /** User-requested egress verification: never reconnects or changes the selected profile. */
