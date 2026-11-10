@@ -925,6 +925,9 @@ internal fun PlayerRuntimeController.handleNaturalPlaybackEnded() {
         return
     }
 
+    if (isTorrentStream) monitorSessionId?.let {
+        torrentService.sessionHistory.markPlaybackFinished(it)
+    }
     emitCompletionScrobbleStop(progressPercent = 99.5f)
     if (contentType.equals("cloud", ignoreCase = true)) {
         saveCloudLibraryProgress(position, duration, completed = true)
