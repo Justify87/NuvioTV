@@ -14,6 +14,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -68,7 +69,7 @@ internal fun StreamingMonitorSessionDetail(
     ) {
         item(key = "detail-heading") {
             MonitorFocusableCard(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().testTag("streaming_history_detail_back")
                     .focusRequester(firstContentRequester)
                     .focusProperties { up = returnToTabsRequester },
                 onClick = onBack

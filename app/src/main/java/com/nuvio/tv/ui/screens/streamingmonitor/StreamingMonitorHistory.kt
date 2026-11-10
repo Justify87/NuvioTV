@@ -22,6 +22,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.tv.material3.MaterialTheme
@@ -89,7 +90,7 @@ internal fun StreamingMonitorHistory(
     val selectedEntry = entries.firstOrNull { it.key == selectedKey }
     val hasSaved = saved.isNotEmpty()
 
-    LaunchedEffect(selectedEntry) { onDetailVisibilityChanged(selectedEntry != null) }
+    LaunchedEffect(selectedEntry != null) { onDetailVisibilityChanged(selectedEntry != null) }
 
     BackHandler(enabled = confirmClear || selectedKey != null) {
         if (confirmClear) {
@@ -170,7 +171,7 @@ internal fun StreamingMonitorHistory(
             item(key = "history-clear") {
                 if (hasSaved) {
                     MonitorFocusableCard(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("streaming_history_clear_action"),
                         onClick = { confirmClear = true }
                     ) {
                         Text(
@@ -199,7 +200,7 @@ internal fun StreamingMonitorHistory(
                     Modifier.focusRequester(returnRowRequester)
                 } else Modifier
                 MonitorFocusableCard(
-                    modifier = Modifier.fillMaxWidth().then(restoreModifier),
+                    modifier = Modifier.fillMaxWidth().testTag("streaming_history_row").then(restoreModifier),
                     onClick = {
                         lastOpenedKey = row.key
                         selectedKey = row.key
@@ -270,12 +271,12 @@ internal fun StreamingMonitorHistory(
                 TextButton(onClick = {
                     confirmClear = false
                     onClearHistory()
-                }) {
+                }, modifier = Modifier.testTag("streaming_history_confirm_clear")) {
                     androidx.compose.material3.Text(stringResource(R.string.sm_history_clear))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { confirmClear = false }) {
+                TextButton(onClick = { confirmClear = false }, modifier = Modifier.testTag("streaming_history_cancel_clear")) {
                     androidx.compose.material3.Text(stringResource(R.string.sm_history_cancel))
                 }
             }

@@ -3172,7 +3172,7 @@ private fun PlayerControlsOverlay(
                     if (uiState.isTorrentStream) {
                         ControlButton(
                             icon = Icons.Default.ShowChart,
-                            contentDescription = "Torrent-Statistiken",
+                            contentDescription = stringResource(R.string.sm_player_action),
                             onClick = onShowTorrentStats,
                             upFocusRequester = progressUpTarget,
                             onDownKey = onHideControls,

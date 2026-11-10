@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.key.pressKey
 import androidx.test.platform.app.InstrumentationRegistry
@@ -98,13 +99,13 @@ class StreamingMonitorDpadTest {
         val historyTab = hasText(context.getString(R.string.streaming_monitor_tab_history)) and hasClickAction()
         composeRule.onNode(historyTab).performClick()
         composeRule.waitForIdle()
-        composeRule.onNode(hasText(title) and hasClickAction()).performClick()
+        composeRule.onNodeWithTag("streaming_history_row").performClick()
         composeRule.waitForIdle()
         val back = hasText(context.getString(R.string.sm_history_back)) and hasClickAction()
         composeRule.onNode(back).assertExists()
-        composeRule.onNode(back).performKeyInput { pressKey(Key.Back) }
+        composeRule.onNodeWithTag("streaming_history_detail_back").performKeyInput { pressKey(Key.Back) }
         composeRule.waitForIdle()
-        composeRule.onNode(hasText(title) and hasClickAction()).assertExists()
+        composeRule.onNodeWithTag("streaming_history_row").assertExists()
         composeRule.onNode(back).assertDoesNotExist()
     }
 
@@ -129,16 +130,15 @@ class StreamingMonitorDpadTest {
         composeRule.onNode(
             hasText(context.getString(R.string.streaming_monitor_tab_history)) and hasClickAction()
         ).performClick()
-        composeRule.onNode(hasText(context.getString(R.string.sm_history_clear)) and hasClickAction())
+        composeRule.onNodeWithTag("streaming_history_clear_action")
             .performClick()
-        composeRule.onNode(hasText(context.getString(R.string.sm_history_cancel))).performClick()
+        composeRule.onNodeWithTag("streaming_history_cancel_clear").performClick()
         assertEquals(0, clearCalls.get())
-        composeRule.onNode(hasText(context.getString(R.string.sm_history_clear)) and hasClickAction())
+        composeRule.onNodeWithTag("streaming_history_clear_action")
             .performClick()
         composeRule.onNode(hasText(context.getString(R.string.sm_history_clear_confirm_message))).assertExists()
         // Modal confirmation is the only control allowed to invoke the destructive callback.
-        composeRule.onNode(hasText(context.getString(R.string.sm_history_clear)) and hasClickAction())
-            .performClick()
+        composeRule.onNodeWithTag("streaming_history_confirm_clear").performClick()
         assertEquals(1, clearCalls.get())
     }
 

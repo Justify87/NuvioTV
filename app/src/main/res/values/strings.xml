@@ -3485,4 +3485,5 @@
     <string name="sm_player_hint">Open Streaming-Monitor from the main menu for session statistics. Playback continues.</string>
     <string name="sm_history_row_network">Upload avg %1$s · peers peak %2$s · seeders peak %3$s</string>
     <string name="sm_history_row_volume">Downloaded %1$s · interruptions %2$d</string>
+    <string name="sm_player_action">Where to find Streaming-Monitor</string>
 </resources>
