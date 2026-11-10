@@ -41,7 +41,16 @@ data class TorrentSessionStats(
     val bufferEvents: Int = 0,
     val samples: Int = 0,
     val failed: Boolean = false,
-    val sessionId: String = ""
+    val sessionId: String = "",
+    /** Version 0 means old count-only records, never measured playback. */
+    val telemetryVersion: Int = 0,
+    val outcome: TorrentSessionOutcome = TorrentSessionOutcome.UNKNOWN,
+    /** Elapsed time from torrent begin() to a real rendered video frame. */
+    val firstFrameMs: Long? = null,
+    val rebufferCount: Int? = null,
+    val rebufferTotalMs: Long? = null,
+    val rebufferIncomplete: Boolean = false,
+    val mediaProfile: TorrentMediaProfile? = null
 ) {
     val rating: String get() = torrentSessionRating(this)
 }
@@ -85,7 +94,29 @@ internal fun parseSavedTorrentSessions(raw: String?): List<TorrentSessionStats> 
             bufferEvents = int("buffers").coerceAtLeast(0),
             samples = int("samples").coerceAtLeast(0),
             failed = bool("failed"),
-            sessionId = string("id")?.take(80).orEmpty()
+            sessionId = string("id")?.take(80).orEmpty(),
+            telemetryVersion = int("v").takeIf { it == 2 } ?: 0,
+            outcome = string("outcome")?.let { raw ->
+                TorrentSessionOutcome.entries.firstOrNull { it.name == raw }
+            } ?: TorrentSessionOutcome.UNKNOWN,
+            firstFrameMs = (obj["firstFrameMs"] as? JsonPrimitive)?.longOrNull?.takeIf { it >= 0L },
+            rebufferCount = (obj["rebufferCount"] as? JsonPrimitive)?.intOrNull?.takeIf { it >= 0 },
+            rebufferTotalMs = (obj["rebufferTotalMs"] as? JsonPrimitive)?.longOrNull?.takeIf { it >= 0L },
+            rebufferIncomplete = bool("rebufferIncomplete"),
+            mediaProfile = (obj["media"] as? JsonObject)?.let { media ->
+                fun positiveInt(key: String) = (media[key] as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 }
+                fun positiveLong(key: String) = (media[key] as? JsonPrimitive)?.longOrNull?.takeIf { it > 0 }
+                fun label(key: String) = (media[key] as? JsonPrimitive)?.contentOrNull?.take(48)
+                TorrentMediaProfile(
+                    width = positiveInt("w"), height = positiveInt("h"),
+                    videoCodec = label("videoCodec"),
+                    hdr = (media["hdr"] as? JsonArray)?.mapNotNull {
+                        (it as? JsonPrimitive)?.contentOrNull
+                    }.orEmpty(),
+                    audioCodec = label("audioCodec"), audioChannels = positiveInt("channels"),
+                    videoBitrateBitsPerSecond = positiveLong("videoBitrate")
+                ).sanitized()
+            }
         )
     }.sortedByDescending { it.startedAtMs }.take(40)
 }.getOrDefault(emptyList())
@@ -108,25 +139,85 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
     private var sampleElapsed = 0L
     private var downloadSum = 0L
     private var uploadSum = 0L
+    private var rebufferStartedElapsed: Long? = null
 
     @Synchronized fun setEnabled(value: Boolean) {
         prefs.edit().putBoolean("enabled", value).apply()
         _enabled.value = value
     }
 
-    @Synchronized fun begin(filename: String?) {
+    @Synchronized fun begin(filename: String?): String {
         finish()
         startElapsed = SystemClock.elapsedRealtime()
         _samples.value = emptyList()
         sampleElapsed = 0L
         downloadSum = 0L
         uploadSum = 0L
+        rebufferStartedElapsed = null
         val name = filename?.trim()?.take(110)?.ifEmpty { null } ?: "Unbenannte Torrent-Sitzung"
         _live.value = TorrentSessionStats(
             title = name, startedAtMs = System.currentTimeMillis(),
             resolutionHint = torrentResolutionHint(name),
-            sessionId = UUID.randomUUID().toString()
+            sessionId = UUID.randomUUID().toString(),
+            telemetryVersion = 2
         )
+        return _live.value!!.sessionId
+    }
+
+    /**
+     * Accept only player callbacks bound to this short-lived session generation.
+     * The start point is torrent-service begin(), not player prepare().
+     * Duplicate first frames and stale callbacks are harmless.
+     */
+    @Synchronized fun markFirstFrame(sessionId: String, elapsedMs: Long = SystemClock.elapsedRealtime()) {
+        val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
+        if (current.firstFrameMs != null || elapsedMs < startElapsed) return
+        _live.value = current.copy(
+            firstFrameMs = elapsedMs - startElapsed,
+            rebufferCount = 0, rebufferTotalMs = 0L
+        )
+    }
+
+    @Synchronized fun updateMediaInfo(sessionId: String, observed: TorrentMediaProfile) {
+        val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
+        val fresh = observed.sanitized()
+        val previous = current.mediaProfile
+        _live.value = current.copy(mediaProfile = fresh.copy(
+            width = fresh.width ?: previous?.width, height = fresh.height ?: previous?.height,
+            videoCodec = fresh.videoCodec ?: previous?.videoCodec,
+            hdr = if (fresh.hdr.isEmpty()) previous?.hdr.orEmpty() else fresh.hdr,
+            audioCodec = fresh.audioCodec ?: previous?.audioCodec,
+            audioChannels = fresh.audioChannels ?: previous?.audioChannels,
+            videoBitrateBitsPerSecond = fresh.videoBitrateBitsPerSecond ?: previous?.videoBitrateBitsPerSecond
+        ))
+    }
+
+    /** Post-first-frame interruption, never initial preload, seek or pause. */
+    @Synchronized fun onRebufferStart(sessionId: String, elapsedMs: Long = SystemClock.elapsedRealtime()) {
+        val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
+        if (current.firstFrameMs == null || rebufferStartedElapsed != null || elapsedMs < startElapsed) return
+        rebufferStartedElapsed = elapsedMs
+    }
+
+    @Synchronized fun onRebufferEnd(
+        sessionId: String, elapsedMs: Long = SystemClock.elapsedRealtime(), resumed: Boolean = true
+    ) {
+        val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
+        val start = rebufferStartedElapsed ?: return
+        rebufferStartedElapsed = null
+        // Pausing, seeking, backgrounding or releasing is not completed rebuffering.
+        if (!resumed || elapsedMs <= start || current.firstFrameMs == null) return
+        val duration = elapsedMs - start
+        val count = (current.rebufferCount ?: 0) + 1
+        _live.value = current.copy(
+            rebufferCount = count, rebufferTotalMs = (current.rebufferTotalMs ?: 0L) + duration,
+            bufferEvents = count
+        )
+    }
+
+    @Synchronized fun markPlaybackFailed(sessionId: String) {
+        val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
+        _live.value = current.copy(outcome = TorrentSessionOutcome.FAILED, failed = true)
     }
 
     /** Call may be frequent; sampling is capped at once per second to avoid UI churn. */
@@ -156,18 +247,28 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
         )
     }
 
-    @Synchronized fun noteBuffering() {
+    @Synchronized fun finish(
+        failed: Boolean = false,
+        sessionId: String? = null,
+        outcome: TorrentSessionOutcome? = null
+    ) {
         val current = _live.value ?: return
-        _live.value = current.copy(bufferEvents = current.bufferEvents + 1)
-    }
-
-    @Synchronized fun finish(failed: Boolean = false) {
-        val current = _live.value ?: return
+        if (sessionId != null && current.sessionId != sessionId) return
+        val chosen = when {
+            failed || current.outcome == TorrentSessionOutcome.FAILED -> TorrentSessionOutcome.FAILED
+            outcome != null -> outcome
+            current.firstFrameMs == null -> TorrentSessionOutcome.CANCELLED_BEFORE_PLAYBACK
+            else -> TorrentSessionOutcome.FINISHED
+        }
+        val incomplete = rebufferStartedElapsed != null
+        rebufferStartedElapsed = null
         _live.value = null
         _samples.value = emptyList()
         val complete = current.copy(
             durationMs = (SystemClock.elapsedRealtime() - startElapsed).coerceAtLeast(0L),
-            failed = failed
+            failed = chosen == TorrentSessionOutcome.FAILED,
+            outcome = chosen,
+            rebufferIncomplete = current.rebufferIncomplete || incomplete
         )
         if (!_enabled.value) return
         val next = boundedSavedSessions(listOf(complete) + _history.value)
@@ -191,6 +292,24 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
                 put("bytes", s.downloadedBytes); put("buffers", s.bufferEvents)
                 put("samples", s.samples); put("failed", s.failed)
                 if (s.sessionId.isNotEmpty()) put("id", s.sessionId)
+                if (s.telemetryVersion >= 2) {
+                    put("v", 2)
+                    put("outcome", s.outcome.name)
+                    s.firstFrameMs?.let { put("firstFrameMs", it) }
+                    s.rebufferCount?.let { put("rebufferCount", it) }
+                    s.rebufferTotalMs?.let { put("rebufferTotalMs", it) }
+                    if (s.rebufferIncomplete) put("rebufferIncomplete", true)
+                    s.mediaProfile?.sanitized()?.let { m ->
+                        put("media", JSONObject().apply {
+                            m.width?.let { put("w", it) }; m.height?.let { put("h", it) }
+                            m.videoCodec?.let { put("videoCodec", it) }
+                            put("hdr", JSONArray(m.hdr))
+                            m.audioCodec?.let { put("audioCodec", it) }
+                            m.audioChannels?.let { put("channels", it) }
+                            m.videoBitrateBitsPerSecond?.let { put("videoBitrate", it) }
+                        })
+                    }
+                }
             })
         }
         prefs.edit().putString("entries", array.toString()).apply()
