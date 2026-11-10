@@ -1,6 +1,8 @@
 package com.nuvio.tv.core.vpn
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VpnHealthTest {
@@ -20,9 +22,22 @@ class VpnHealthTest {
                 lastVerifiedAt = now - 30_000L).health(now))
     }
     @Test fun expiredVerificationDoesNotDisplayGreen() {
-        assertEquals(VpnHealth.CHECKING,
-            WireGuardInfo(status = TorrentVpnSafety.Status.VERIFIED,
-                lastVerifiedAt = now - 91_000L).health(now))
+        val info = WireGuardInfo(status = TorrentVpnSafety.Status.VERIFIED,
+            lastVerifiedAt = now - 91_000L)
+        assertEquals(VpnHealth.CHECKING, info.health(now))
+        assertTrue(info.canRefreshVerification())
+    }
+    @Test fun refreshUnavailableUnlessUnderlyingStatusIsVerified() {
+        assertTrue(WireGuardInfo(status = TorrentVpnSafety.Status.VERIFIED).canRefreshVerification())
+        listOf(
+            TorrentVpnSafety.Status.CONNECTING,
+            TorrentVpnSafety.Status.TUNNEL_UP,
+            TorrentVpnSafety.Status.DISCONNECTED,
+            TorrentVpnSafety.Status.ERROR
+        ).forEach { state ->
+            assertFalse("Refresh must be disabled in $state",
+                WireGuardInfo(status = state, lastVerifiedAt = now).canRefreshVerification())
+        }
     }
     @Test fun errorIsRedEvenWithRecentPreviousCheck() {
         assertEquals(VpnHealth.ERROR,

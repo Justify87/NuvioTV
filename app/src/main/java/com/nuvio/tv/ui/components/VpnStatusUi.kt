@@ -33,6 +33,7 @@ import com.nuvio.tv.core.vpn.VpnHealth
 import com.nuvio.tv.core.vpn.VpnIndicatorSize
 import com.nuvio.tv.core.vpn.VpnTrafficSample
 import com.nuvio.tv.core.vpn.WireGuardInfo
+import com.nuvio.tv.core.vpn.canRefreshVerification
 import com.nuvio.tv.core.vpn.health
 import java.text.DateFormat
 import java.util.Date
@@ -124,7 +125,7 @@ fun VpnStatusDialog(
         },
         dismissButton = {
             Row {
-                TextButton(onClick = onRefresh, enabled = status == VpnHealth.CONNECTED) {
+                TextButton(onClick = onRefresh, enabled = info.canRefreshVerification()) {
                     Text("Erneut prüfen")
                 }
                 TextButton(onClick = onDismiss) { Text("Schließen") }
