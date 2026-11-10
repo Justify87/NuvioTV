@@ -3510,4 +3510,5 @@
     <string name="sm_outcome_unknown">Measurement incomplete</string>
     <string name="sm_outcome_legacy">Legacy history (playback result unknown)</string>
     <string name="sm_kpi_basis_v2">%1$d of %2$d sessions with first-frame and complete rebuffer evidence finished without stalls. Legacy/unknown excluded.</string>
+    <string name="sm_history_row_volume_v2">Downloaded %1$s · observed interruptions %2$s</string>
 </resources>
