@@ -15,11 +15,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -28,10 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nuvio.tv.core.vpn.TorrentVpnSafety
-import com.nuvio.tv.core.vpn.importWireGuardProfileFromUri
-import com.nuvio.tv.core.vpn.wireGuardImportErrorMessage
 import com.nuvio.tv.ui.theme.NuvioTheme
-import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 import androidx.compose.material3.AlertDialog
@@ -61,13 +56,9 @@ internal fun WireGuardSettingsContent(
     val traffic by vpn.traffic.collectAsStateWithLifecycle()
     var statusDialogOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val info by vpn.info.collectAsStateWithLifecycle()
     val profiles by vpn.profiles.collectAsStateWithLifecycle()
-    var selected by remember { mutableStateOf(vpn.selectedId) }
-    // An external file manager can import a profile while this screen is paused.
-    // Refresh the selection whenever WireGuardManager publishes a new profile list.
-    LaunchedEffect(profiles) { selected = vpn.selectedId }
+    val selected by viewModel.selectedProfileId.collectAsStateWithLifecycle()
     var autoConnect by remember { mutableStateOf(vpn.autoConnectEnabled) }
     var message by remember { mutableStateOf<String?>(null) }
     var consentInProgress by remember { mutableStateOf(false) }
@@ -82,15 +73,8 @@ internal fun WireGuardSettingsContent(
     }
     fun importSelectedUri(uri: Uri?) {
         if (uri == null) return
-        scope.launch {
-            try {
-                val profile = importWireGuardProfileFromUri(context, vpn, uri)
-                selected = profile.id
-                message = "WireGuard-Profil importiert. VPN verbinden, um es zu aktivieren."
-            } catch (error: Exception) {
-                message = "Import fehlgeschlagen: ${wireGuardImportErrorMessage(error)}"
-            }
-        }
+        message = null
+        viewModel.importProfile(uri)
     }
 
     // ACTION_GET_CONTENT may expose compatible third-party file pickers such as
@@ -136,9 +120,9 @@ internal fun WireGuardSettingsContent(
                 TextButton(onClick = {
                     val id = renameId
                     renameId = null
-                    if (id != null) scope.launch {
-                        runCatching { vpn.renameProfile(id, renameText) }
-                            .onFailure { message = it.message }
+                    if (id != null) {
+                        message = null
+                        viewModel.renameProfile(id, renameText)
                     }
                 }) { Text("Save") }
             },
@@ -288,11 +272,8 @@ internal fun WireGuardSettingsContent(
                     title = (if (selected == profile.id) "✓ " else "") + profile.name,
                     subtitle = "Profil auswählen (trennt eine aktive Verbindung)",
                     onClick = {
-                        scope.launch {
-                            runCatching { vpn.selectProfile(profile.id) }
-                                .onSuccess { selected = profile.id }
-                                .onFailure { message = it.message }
-                        }
+                        message = null
+                        viewModel.selectProfile(profile.id)
                     }
                 )
                 SettingsActionRow(
@@ -307,11 +288,8 @@ internal fun WireGuardSettingsContent(
                     title = "Profil löschen",
                     subtitle = "Verschlüsselte Datei dauerhaft aus dem App-Speicher entfernen",
                     onClick = {
-                        scope.launch {
-                            runCatching { vpn.deleteProfile(profile.id) }
-                                .onSuccess { selected = vpn.selectedId }
-                                .onFailure { message = it.message }
-                        }
+                        message = null
+                        viewModel.deleteProfile(profile.id)
                     }
                 )
             }
