@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -45,6 +46,7 @@ class TorrentService @Inject constructor(
         private const val TAG = "TorrentService"
         private const val SAMPLE_INTERVAL_MS = 1_000L
         private const val STATS_INTERVAL_MS = 250L
+        private const val CLEANUP_WAIT_TIMEOUT_MS = 10_000L
     }
 
     private data class EngineConfigurationKey(
@@ -58,6 +60,11 @@ class TorrentService @Inject constructor(
         val streamId: String?
     )
 
+    private data class CleanupRequest(
+        val detached: DetachedStream,
+        val shutdownEngine: Boolean
+    )
+
     private val _state = MutableStateFlow<TorrentState>(TorrentState.Idle)
     val state: StateFlow<TorrentState> = _state.asStateFlow()
     private val _cacheState = MutableStateFlow(TorrentCacheState())
@@ -67,7 +74,13 @@ class TorrentService @Inject constructor(
     private val lifecycleLock = Any()
     private val startMutex = Mutex()
     private var statsJob: Job? = null
-    private var cleanupJob: Job? = null
+    private val cleanupCoordinator = TorrentCleanupCoordinator(
+        scope = scope,
+        mergePending = ::mergeCleanupRequests,
+        performCleanup = { request: CleanupRequest ->
+            cleanupDetachedStream(request.detached, request.shutdownEngine)
+        }
+    )
     private var engineEventsJob: Job? = null
     private var streamGeneration = 0L
     @Volatile
@@ -248,16 +261,39 @@ class TorrentService @Inject constructor(
 
     private fun scheduleStop(shutdownEngine: Boolean) {
         val detached = detachActiveStream()
-        val previousCleanup = cleanupJob
-        cleanupJob = scope.launch {
-            previousCleanup?.join()
-            cleanupDetachedStream(detached, shutdownEngine)
+        if (detached.streamId != null || shutdownEngine) {
+            if (!cleanupCoordinator.request(CleanupRequest(detached, shutdownEngine))) {
+                Log.e(TAG, "Torrent cleanup previously failed; refusing further engine operations")
+            }
         }
     }
 
     private suspend fun stopStreamNow(shutdownEngine: Boolean) {
-        cleanupJob?.join()
-        cleanupDetachedStream(detachActiveStream(), shutdownEngine)
+        val detached = detachActiveStream()
+        if (detached.streamId != null || shutdownEngine) {
+            check(cleanupCoordinator.request(CleanupRequest(detached, shutdownEngine))) {
+                "Torrent cleanup previously failed; cannot start another stream"
+            }
+        }
+        try {
+            // A timed-out waiter must not cancel native cleanup or reuse the same engine.
+            cleanupCoordinator.awaitIdle(CLEANUP_WAIT_TIMEOUT_MS)
+        } catch (timeout: TimeoutCancellationException) {
+            throw IllegalStateException(
+                "Torrent cleanup exceeded ${CLEANUP_WAIT_TIMEOUT_MS}ms; refusing to reuse the engine",
+                timeout
+            )
+        }
+    }
+
+    private fun mergeCleanupRequests(previous: CleanupRequest, incoming: CleanupRequest): CleanupRequest {
+        // A new stream can only be attached after the preceding cleanup has completed.
+        // Repeated stop/shutdown calls therefore only need to preserve the one detached route.
+        val detached = if (previous.detached.streamId != null) previous.detached else incoming.detached
+        return CleanupRequest(
+            detached = detached,
+            shutdownEngine = previous.shutdownEngine || incoming.shutdownEngine
+        )
     }
 
     private fun detachActiveStream(): DetachedStream {
