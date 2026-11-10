@@ -86,6 +86,7 @@ internal fun StreamingMonitorScreenContent(
     var lastFocusedTabIndex by rememberSaveable { mutableIntStateOf(StreamingMonitorTab.Overview.ordinal) }
     var restoreContentFocus by rememberSaveable { mutableStateOf(false) }
     var contentFocused by remember { mutableStateOf(false) }
+    var historyDetailOpen by remember { mutableStateOf(false) }
 
     val tabRequesters = remember { List(StreamingMonitorTab.entries.size) { FocusRequester() } }
     val contentRequester = remember { FocusRequester() }
@@ -97,12 +98,12 @@ internal fun StreamingMonitorScreenContent(
     LaunchedEffect(sidebarExpanded) {
         if (!sidebarExpanded) {
             withFrameNanos { }
-            val target = if (restoreContentFocus) contentRequester else tabRequesters[focusedTabIndex]
+            val target = if (historyDetailOpen || restoreContentFocus) contentRequester else tabRequesters[focusedTabIndex]
             runCatching { target.requestFocus() }
         }
     }
 
-    BackHandler(enabled = contentFocused && !sidebarExpanded) {
+    BackHandler(enabled = contentFocused && !sidebarExpanded && !historyDetailOpen) {
         restoreContentFocus = false
         contentFocused = false
         tabRequesters[focusedTabIndex].requestFocus()
@@ -119,24 +120,26 @@ internal fun StreamingMonitorScreenContent(
             ),
         verticalArrangement = Arrangement.Top
     ) {
-        Text(
-            text = stringResource(R.string.nav_streaming_monitor),
-            style = MaterialTheme.typography.headlineMedium,
-            color = NuvioTheme.colors.TextPrimary
-        )
-        Spacer(Modifier.height(NuvioTheme.spacing.xl))
-        StreamingMonitorTabs(
-            selectedTab = selectedTab,
-            tabRequesters = tabRequesters,
-            contentRequester = contentRequester,
-            modifier = Modifier.focusRequester(shellFocusRequester).focusGroup(),
-            onFocused = { index ->
-                lastFocusedTabIndex = index
-                restoreContentFocus = false
-            },
-            onSelect = { selectedTabIndex = it }
-        )
-        Spacer(Modifier.height(NuvioTheme.spacing.xxl))
+        if (!historyDetailOpen) {
+            Text(
+                text = stringResource(R.string.nav_streaming_monitor),
+                style = MaterialTheme.typography.headlineMedium,
+                color = NuvioTheme.colors.TextPrimary
+            )
+            Spacer(Modifier.height(NuvioTheme.spacing.xl))
+            StreamingMonitorTabs(
+                selectedTab = selectedTab,
+                tabRequesters = tabRequesters,
+                contentRequester = contentRequester,
+                modifier = Modifier.focusRequester(shellFocusRequester).focusGroup(),
+                onFocused = { index ->
+                    lastFocusedTabIndex = index
+                    restoreContentFocus = false
+                },
+                onSelect = { selectedTabIndex = it }
+            )
+            Spacer(Modifier.height(NuvioTheme.spacing.xxl))
+        }
         if (selectedTab == StreamingMonitorTab.Overview) {
             StreamingMonitorOverview(
                 state = overviewState,
@@ -155,6 +158,7 @@ internal fun StreamingMonitorScreenContent(
                 liveSamples = overviewState.samplePoints,
                 recordingEnabled = overviewState.historyRecordingEnabled,
                 onClearHistory = onClearHistory,
+                onDetailVisibilityChanged = { historyDetailOpen = it },
                 firstContentRequester = contentRequester,
                 returnToTabsRequester = tabRequesters[focusedTabIndex],
                 modifier = Modifier.weight(1f),
