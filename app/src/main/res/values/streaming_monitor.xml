@@ -34,4 +34,12 @@
     <string name="sm_privacy_heading">History and privacy</string>
     <string name="sm_privacy_on">History stays local on this device. The 60-second graph is held only in memory.</string>
     <string name="sm_privacy_off">History recording is opt-in and remains off. Enable it in torrent settings if desired. Existing saved sessions remain visible; the live graph is never saved.</string>
+
+    <string name="sm_press_ok_for_details">OK: details</string>
+    <string name="sm_kpi_detail_heading">What is measured?</string>
+    <string name="sm_detail_download">Instantaneous torrent-engine download payload rate in binary byte units, not VPN traffic and not download progress for the whole torrent.</string>
+    <string name="sm_detail_upload">Instantaneous torrent-engine upload rate. The number is unknown when no active engine measurement exists.</string>
+    <string name="sm_detail_peers">Number of peers currently connected to the engine for this stream, not all available peers in the swarm.</string>
+    <string name="sm_detail_seeds">Number of seeders currently connected, not the number of all seeders known to trackers.</string>
+    <string name="sm_detail_buffer">Number of buffering events recorded by existing player hooks during this torrent session. First rendered frame, seek/pause exclusions and buffering duration are not yet correlated; M04 will improve this.</string>
 </resources>
