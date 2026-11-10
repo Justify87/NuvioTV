@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
@@ -111,7 +110,7 @@ internal fun connectionUiState(
 /** Binary units, matching the torrent settings' usage presentation. */
 internal fun formatVpnBytes(bytes: Long?, locale: Locale = Locale.getDefault()): String {
     if (bytes == null || bytes < 0L) return "—"
-    if (bytes < 1024L) return "$" + "{bytes} B"
+    if (bytes < 1024L) return bytes.toString() + " B"
     val units = arrayOf("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB")
     var value = bytes.toDouble()
     var index = 0
