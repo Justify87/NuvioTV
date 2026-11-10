@@ -35,7 +35,7 @@ class StreamingMonitorViewModel @Inject constructor(
         CoreSnapshot(state, live, points, history, recordingEnabled)
     }
 
-    val uiState: StateFlow<StreamingMonitorUiState> = combine(
+    internal val uiState: StateFlow<StreamingMonitorUiState> = combine(
         core,
         torrentSettings.settings
     ) { snapshot, settings ->
