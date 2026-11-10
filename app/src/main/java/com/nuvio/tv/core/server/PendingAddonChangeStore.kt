@@ -3,20 +3,18 @@ package com.nuvio.tv.core.server
 /** Keeps TV approval requests available briefly for web status polling. */
 internal class PendingAddonChangeStore(
     private val clockMillis: () -> Long = System::currentTimeMillis,
-    private val pendingTimeoutMillis: Long = 5 * 60_000L,
     private val completedRetentionMillis: Long = 5 * 60_000L,
     private val maxEntries: Int = 64
 ) {
     private data class Entry(
         val change: PendingAddonChange,
-        val createdAtMillis: Long,
         var completedAtMillis: Long? = null
     )
 
     private val entries = LinkedHashMap<String, Entry>()
 
     init {
-        require(pendingTimeoutMillis > 0 && completedRetentionMillis > 0 && maxEntries > 0)
+        require(completedRetentionMillis > 0 && maxEntries > 0)
     }
 
     @Synchronized
@@ -32,7 +30,7 @@ internal class PendingAddonChangeStore(
         prune(now)
         // A newer request supersedes any older TV confirmation request.
         rejectPendingAt(now)
-        entries[change.id] = Entry(change, now)
+        entries[change.id] = Entry(change)
         while (entries.size > maxEntries) {
             val oldestCompleted = entries.entries.firstOrNull { it.value.completedAtMillis != null }
                 ?: break
@@ -79,14 +77,7 @@ internal class PendingAddonChangeStore(
     private fun prune(now: Long) {
         val iterator = entries.values.iterator()
         while (iterator.hasNext()) {
-            val entry = iterator.next()
-            if (entry.completedAtMillis == null &&
-                now - entry.createdAtMillis >= pendingTimeoutMillis
-            ) {
-                entry.change.status = AddonChangeStatus.REJECTED
-                entry.completedAtMillis = entry.createdAtMillis + pendingTimeoutMillis
-            }
-            val completedAt = entry.completedAtMillis
+            val completedAt = iterator.next().completedAtMillis
             if (completedAt != null && now - completedAt >= completedRetentionMillis) {
                 iterator.remove()
             }
