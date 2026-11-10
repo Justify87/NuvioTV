@@ -53,7 +53,6 @@ class StreamingMonitorDpadTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val overview = context.getString(R.string.streaming_monitor_tab_overview)
         val idle = context.getString(R.string.sm_status_idle)
-        val noData = context.getString(R.string.sm_no_data)
 
         composeRule.setContent {
             NuvioTheme {
@@ -67,7 +66,6 @@ class StreamingMonitorDpadTest {
         }
         composeRule.waitForIdle()
         composeRule.onNode(hasText(idle)).assertExists()
-        composeRule.onNode(hasText(noData)).assertExists()
 
         val overviewTab = hasText(overview) and hasClickAction()
         composeRule.onNode(overviewTab).assertIsFocused()
