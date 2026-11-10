@@ -57,6 +57,10 @@ data class WireGuardInfo(
     val exitCity: String? = null
 )
 
+/** Only the loss of the currently observed default network matters. */
+internal fun shouldHandleNetworkLoss(observed: Network?, lost: Network): Boolean =
+    observed == lost
+
 /**
  * Embedded WireGuard; VpnService is supplied by the upstream WireGuard tunnel AAR.
  * All traffic for context.packageName uses the VPN when the tunnel is active.
@@ -82,7 +86,8 @@ class WireGuardManager @Inject constructor(
         }
 
         override fun onLost(network: Network) {
-            if (observedNetwork == network) observedNetwork = null
+            if (!shouldHandleNetworkLoss(observedNetwork, network)) return
+            observedNetwork = null
             invalidateForNetworkChange()
         }
     }
