@@ -10,15 +10,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.UUID
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.longOrNull
 
 /** In-memory live telemetry; opt-in, bounded, device-local session history. */
 data class TorrentRateSample(
@@ -40,8 +31,7 @@ data class TorrentSessionStats(
     val downloadedBytes: Long = 0L,
     val bufferEvents: Int = 0,
     val samples: Int = 0,
-    val failed: Boolean = false,
-    val sessionId: String = ""
+    val failed: Boolean = false
 ) {
     val rating: String get() = torrentSessionRating(this)
 }
@@ -59,39 +49,6 @@ fun torrentSessionRating(s: TorrentSessionStats): String = when {
 fun torrentResolutionHint(name: String): String =
     Regex("(?i)(?:^|[^a-z0-9])(2160p|4k|1080p|720p|480p)(?:$|[^a-z0-9])")
         .find(name)?.groupValues?.get(1)?.uppercase() ?: "Unbekannt"
-
-/** Pure, lenient migration: malformed entries cannot discard other valid sessions. Never rewrites prefs on load. */
-internal fun parseSavedTorrentSessions(raw: String?): List<TorrentSessionStats> = runCatching {
-    val root = Json.parseToJsonElement(raw ?: "[]") as? JsonArray ?: return@runCatching emptyList()
-    root.mapNotNull { element ->
-        val obj = element as? JsonObject ?: return@mapNotNull null
-        fun string(key: String): String? = (obj[key] as? JsonPrimitive)?.contentOrNull
-        fun long(key: String): Long = (obj[key] as? JsonPrimitive)?.longOrNull ?: 0L
-        fun int(key: String): Int = (obj[key] as? JsonPrimitive)?.intOrNull ?: 0
-        fun bool(key: String): Boolean = (obj[key] as? JsonPrimitive)?.booleanOrNull ?: false
-        val time = long("time")
-        if (time <= 0L) return@mapNotNull null
-        TorrentSessionStats(
-            title = string("title")?.take(110).orEmpty().ifBlank { "Unbenannte Torrent-Sitzung" },
-            startedAtMs = time,
-            durationMs = long("duration").coerceAtLeast(0L),
-            resolutionHint = string("resolution")?.take(40) ?: "Unbekannt",
-            averageDownloadBps = long("avgDown").coerceAtLeast(0L),
-            peakDownloadBps = long("peakDown").coerceAtLeast(0L),
-            averageUploadBps = long("avgUp").coerceAtLeast(0L),
-            peakPeers = int("peers").coerceAtLeast(0),
-            peakSeeds = int("seeds").coerceAtLeast(0),
-            downloadedBytes = long("bytes").coerceAtLeast(0L),
-            bufferEvents = int("buffers").coerceAtLeast(0),
-            samples = int("samples").coerceAtLeast(0),
-            failed = bool("failed"),
-            sessionId = string("id")?.take(80).orEmpty()
-        )
-    }.sortedByDescending { it.startedAtMs }.take(40)
-}.getOrDefault(emptyList())
-
-internal fun boundedSavedSessions(sessions: List<TorrentSessionStats>): List<TorrentSessionStats> =
-    sessions.sortedByDescending { it.startedAtMs }.take(40)
 
 @Singleton
 class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Context) {
@@ -124,8 +81,7 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
         val name = filename?.trim()?.take(110)?.ifEmpty { null } ?: "Unbenannte Torrent-Sitzung"
         _live.value = TorrentSessionStats(
             title = name, startedAtMs = System.currentTimeMillis(),
-            resolutionHint = torrentResolutionHint(name),
-            sessionId = UUID.randomUUID().toString()
+            resolutionHint = torrentResolutionHint(name)
         )
     }
 
@@ -170,7 +126,7 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
             failed = failed
         )
         if (!_enabled.value) return
-        val next = boundedSavedSessions(listOf(complete) + _history.value)
+        val next = (listOf(complete) + _history.value).take(40)
         _history.value = next
         saveHistory(next)
     }
@@ -190,12 +146,25 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
                 put("peers", s.peakPeers); put("seeds", s.peakSeeds)
                 put("bytes", s.downloadedBytes); put("buffers", s.bufferEvents)
                 put("samples", s.samples); put("failed", s.failed)
-                if (s.sessionId.isNotEmpty()) put("id", s.sessionId)
             })
         }
         prefs.edit().putString("entries", array.toString()).apply()
     }
 
-    private fun readHistory(): List<TorrentSessionStats> =
-        parseSavedTorrentSessions(prefs.getString("entries", null))
+    private fun readHistory(): List<TorrentSessionStats> = runCatching {
+        val array = JSONArray(prefs.getString("entries", "[]") ?: "[]")
+        (0 until minOf(array.length(), 40)).map { i ->
+            val s = array.getJSONObject(i)
+            TorrentSessionStats(
+                title = s.optString("title", "").take(110),
+                startedAtMs = s.optLong("time"), durationMs = s.optLong("duration"),
+                resolutionHint = s.optString("resolution", "Unbekannt"),
+                averageDownloadBps = s.optLong("avgDown"), peakDownloadBps = s.optLong("peakDown"),
+                averageUploadBps = s.optLong("avgUp"), peakPeers = s.optInt("peers"),
+                peakSeeds = s.optInt("seeds"), downloadedBytes = s.optLong("bytes"),
+                bufferEvents = s.optInt("buffers"), samples = s.optInt("samples"),
+                failed = s.optBoolean("failed")
+            )
+        }
+    }.getOrDefault(emptyList())
 }

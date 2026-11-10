@@ -72,14 +72,15 @@ fun StreamingMonitorScreen(
     viewModel: StreamingMonitorViewModel = hiltViewModel()
 ) {
     val overviewState by viewModel.uiState.collectAsStateWithLifecycle()
-    StreamingMonitorScreenContent(showBuiltInHeader, overviewState)
+    StreamingMonitorScreenContent(showBuiltInHeader, overviewState, onClearHistory = viewModel::clearSavedHistory)
 }
 
 /** M02 owns the Overview. History and Connection stay neutral until M03/M05. */
 @Composable
 internal fun StreamingMonitorScreenContent(
     showBuiltInHeader: Boolean = true,
-    overviewState: StreamingMonitorUiState = StreamingMonitorUiState(isLoading = false)
+    overviewState: StreamingMonitorUiState = StreamingMonitorUiState(isLoading = false),
+    onClearHistory: () -> Unit = {}
 ) {
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(StreamingMonitorTab.Overview.ordinal) }
     var lastFocusedTabIndex by rememberSaveable { mutableIntStateOf(StreamingMonitorTab.Overview.ordinal) }
@@ -139,6 +140,21 @@ internal fun StreamingMonitorScreenContent(
         if (selectedTab == StreamingMonitorTab.Overview) {
             StreamingMonitorOverview(
                 state = overviewState,
+                firstContentRequester = contentRequester,
+                returnToTabsRequester = tabRequesters[focusedTabIndex],
+                modifier = Modifier.weight(1f),
+                onContentFocusChanged = { hasFocus ->
+                    contentFocused = hasFocus
+                    if (hasFocus) restoreContentFocus = true
+                }
+            )
+        } else if (selectedTab == StreamingMonitorTab.History) {
+            StreamingMonitorHistory(
+                saved = overviewState.savedSessions,
+                live = overviewState.activeSession,
+                liveSamples = overviewState.samplePoints,
+                recordingEnabled = overviewState.historyRecordingEnabled,
+                onClearHistory = onClearHistory,
                 firstContentRequester = contentRequester,
                 returnToTabsRequester = tabRequesters[focusedTabIndex],
                 modifier = Modifier.weight(1f),
