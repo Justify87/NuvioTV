@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sm_download">Download</string>
+    <string name="sm_upload">Upload</string>
+    <string name="sm_peers">Connected peers</string>
+    <string name="sm_seeds">Connected seeders</string>
+    <string name="sm_buffer_events">Recorded buffering interruptions</string>
+    <string name="sm_buffer_note">Preliminary: not yet correlated with first frame</string>
+    <string name="sm_connected_only">Currently connected, not total swarm</string>
+    <string name="sm_source_torrent">Torrent engine · bytes per second</string>
+    <string name="sm_chart_title">Download / Upload · last 60 seconds</string>
+    <string name="sm_chart_max">Scale: 0 to %1$s</string>
+    <string name="sm_chart_sample_count">%1$d measured points</string>
+    <string name="sm_chart_60_seconds_ago">−60 s</string>
+    <string name="sm_chart_30_seconds_ago">−30 s</string>
+    <string name="sm_chart_last_sample">Last measurement</string>
+    <string name="sm_chart_disclaimer">Values are in-memory torrent-engine measurements. No VPN traffic is shown. Gaps are not interpolated.</string>
+    <string name="sm_no_samples">No live measurements yet</string>
+    <string name="sm_status_loading">Loading torrent state…</string>
+    <string name="sm_status_disabled">P2P is disabled</string>
+    <string name="sm_status_idle">No active torrent playback</string>
+    <string name="sm_status_connecting">Establishing connection</string>
+    <string name="sm_status_streaming">Active torrent</string>
+    <string name="sm_status_error">Torrent error</string>
+    <string name="sm_waiting_for_rates">Waiting for the first engine measurements.</string>
+    <string name="sm_filename_unknown">The active filename is not available.</string>
+    <string name="sm_recorded_sessions">Recorded sessions</string>
+    <string name="sm_recording_on">History recording enabled</string>
+    <string name="sm_recording_off">History recording disabled</string>
+    <string name="sm_stability_title">Without recorded interruption</string>
+    <string name="sm_stability_basis">%1$d of %2$d measured sessions</string>
+    <string name="sm_stability_disclaimer">Denominator: stored sessions with samples and positive duration, including failures. Numerator: these sessions with no recorded interruption or terminal failure. Not a playback success rate; first-frame correlation follows in M04.</string>
+    <string name="sm_no_data">No data</string>
+    <string name="sm_privacy_heading">History and privacy</string>
+    <string name="sm_privacy_on">History stays local on this device. The 60-second graph is held only in memory.</string>
+    <string name="sm_privacy_off">History recording is opt-in and remains off. Enable it in torrent settings if desired. Existing saved sessions remain visible; the live graph is never saved.</string>
+</resources>
