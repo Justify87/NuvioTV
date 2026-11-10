@@ -68,7 +68,7 @@ private fun exoVideoCodec(video: Format?): String? {
             c.startsWith("dvhe") || c.startsWith("dvh1") -> "HEVC"
             c.startsWith("dvav") || c.startsWith("dva1") -> "AVC"
             c.startsWith("dav1") -> "AV1"
-            else -> "HEVC" // safe default for unknown DV profiles
+            else -> null // Unknown Dolby Vision base codec must remain unknown.
         }
     }
     return CustomDefaultTrackNameProvider.resolveCodecName(mime, video.codecs)
