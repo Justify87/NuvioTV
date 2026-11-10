@@ -95,7 +95,8 @@ private fun PlaybackSectionContent(
     onUpdate: PlaybackSettingsUpdate,
     onOpenDialog: (PlaybackDialog) -> Unit,
     onMemorySettingChanged: () -> Unit,
-    onClearTorrentCache: () -> Unit
+    onClearTorrentCache: () -> Unit,
+    onOpenStreamingMonitor: () -> Unit
 ) {
     when (section) {
         PlaybackSection.PLAYER -> PlaybackPlayerSection(playerSettings, releaseDecoderOnBackground, onUpdate, onOpenDialog)
