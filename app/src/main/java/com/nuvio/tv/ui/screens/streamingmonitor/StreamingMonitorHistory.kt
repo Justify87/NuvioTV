@@ -217,9 +217,7 @@ internal fun StreamingMonitorHistory(
                         text = (if (row.isLive) stringResource(R.string.sm_history_active) + " · " else "") +
                             DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
                                 .format(Date(data.startedAtMs)) + " · " +
-                            if (row.isLive) stringResource(R.string.sm_history_active)
-                            else if (data.failed) stringResource(R.string.sm_history_failed)
-                            else stringResource(R.string.sm_history_finished),
+                            sessionOutcomeText(data, row.isLive),
                         style = MaterialTheme.typography.bodyMedium,
                         color = NuvioTheme.colors.TextSecondary
                     )
@@ -234,7 +232,9 @@ internal fun StreamingMonitorHistory(
                             R.string.sm_history_rates,
                             if (data.samples > 0) formatTorrentRate(data.averageDownloadBps) else "—",
                             if (data.samples > 0) formatTorrentRate(data.peakDownloadBps) else "—"
-                        ) + " · " + data.rating,
+) + " · " + (if (data.telemetryVersion >= 2) {
+                            com.nuvio.tv.core.torrent.assessStreamingSession(data).label
+                        } else data.rating),
                         style = MaterialTheme.typography.bodySmall,
                         color = NuvioTheme.colors.TextSecondary
                     )
@@ -250,9 +250,10 @@ internal fun StreamingMonitorHistory(
                     )
                     Text(
                         text = stringResource(
-                            R.string.sm_history_row_volume,
+                            R.string.sm_history_row_volume_v2,
                             if (data.samples > 0) formatTorrentBytes(data.downloadedBytes) else "—",
-                            data.bufferEvents
+                            if (data.telemetryVersion >= 2) data.rebufferCount?.toString() ?: "—"
+                            else data.bufferEvents.toString()
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         color = NuvioTheme.colors.TextSecondary
