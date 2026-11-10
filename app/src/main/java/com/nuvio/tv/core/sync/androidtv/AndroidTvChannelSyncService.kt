@@ -29,6 +29,8 @@ import javax.inject.Singleton
 private const val TAG = "TvChannelSync"
 private const val DEBOUNCE_MS = 2_000L
 
+private data class ChannelEpisodeKey(val contentId: String, val season: Int?, val episode: Int?)
+
 /**
  * Keeps the Android TV "Continue Watching" preview channel in sync with the app's
  * CW enrichment cache. Uses the same enriched data that the in-app Continue Watching
@@ -126,8 +128,13 @@ class AndroidTvChannelSyncService @Inject constructor(
         )
         val selection = buildChannelItems(inProgressItems, nextUpItems, resolvedSettings)
         val channelItems = selection.map { it.progress }.withCustomPosterArt(posterPattern)
-        val nextUpChannelItems = selection.filter { it.isNextUp }
-            .map { it.progress }.withCustomPosterArt(posterPattern)
+        // Keep the old mixed channel's selection unchanged. Apply stricter identity checks
+        // only to the separate Next Up channel's public contract.
+        val eligibleNextUpKeys = nextUpItems.filter(::isVerifiedAiredNextUp)
+            .map { ChannelEpisodeKey(it.contentId, it.season, it.episode) }.toSet()
+        val nextUpChannelItems = selection.filter {
+            it.isNextUp && ChannelEpisodeKey(it.progress.contentId, it.progress.season, it.progress.episode) in eligibleNextUpKeys
+        }.map { it.progress }.withCustomPosterArt(posterPattern)
 
         Log.d(
             TAG,
@@ -174,7 +181,7 @@ class AndroidTvChannelSyncService @Inject constructor(
         // Filter next-up items: exclude unaired (launcher should only show playable content),
         // respect days cap and dismissed keys
         val filteredNextUp = nextUp
-            .filter { isVerifiedAiredNextUp(it) } // Only aired episodes with valid episode identity
+            .filter { it.hasAired } // Legacy selection stays unchanged
             .filter { cutoffMs == null || it.lastWatched >= cutoffMs }
             .filter { nextUpDismissKey(it) !in settings.dismissedNextUp }
 
