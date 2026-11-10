@@ -1618,7 +1618,6 @@
     <string name="streaming_monitor_tab_connection">Verbindung</string>
     <string name="streaming_monitor_m01_overview">Live-Daten erscheinen in M02.</string>
     <string name="streaming_monitor_m01_history">Der Sitzungsverlauf folgt in M03.</string>
-    <string name="streaming_monitor_m01_connection">VPN- und Cache-Informationen folgen in M05.</string>
     <string name="nav_addons">Addons</string>
     <string name="nav_movies">Filme</string>
     <string name="nav_series">Serien</string>
@@ -2342,4 +2341,41 @@
     <string name="sm_outcome_legacy">Alte Historie (Wiedergabeergebnis unbekannt)</string>
     <string name="sm_kpi_basis_v2">%1$d von %2$d Sitzungen mit bestätigtem erstem Bild und vollständigen Pufferdaten endeten ohne Ruckeln. Altbestand/Unbekannte ausgeschlossen.</string>
     <string name="sm_history_row_volume_v2">Heruntergeladen %1$s · beobachtete Unterbrechungen %2$s</string>
+
+    <!-- Streaming-Monitor: App-VPN und Torrent-Cache, M05 -->
+    <string name="sm_connection_health">VPN-Verbindungsstatus</string>
+    <string name="sm_connection_verified">VPN geprüft</string>
+    <string name="sm_connection_checking">VPN wird geprüft</string>
+    <string name="sm_connection_error">VPN-Störung</string>
+    <string name="sm_connection_disconnected">VPN getrennt</string>
+    <string name="sm_connection_scope">Verifizierter VPN-Ausgang nur für diese App. Ein aktiver Tunnel beweist weder einen verifizierten Ausgang noch einen betriebssystemweiten Kill-Switch.</string>
+    <string name="sm_connection_p2p_disabled">P2P ist ausgeschaltet. VPN- und Cache-Informationen bleiben hier sichtbar.</string>
+    <string name="sm_connection_recheck">VPN-Ausgang erneut prüfen</string>
+    <string name="sm_connection_refreshing">VPN wird geprüft…</string>
+    <string name="sm_connection_refreshing_hint">Die vorhandene App-VPN-Prüfung läuft. Es wird keine neue Verbindung gestartet.</string>
+    <string name="sm_connection_recheck_success">VPN-Ausgang erfolgreich überprüft.</string>
+    <string name="sm_connection_recheck_failed">Prüfung fehlgeschlagen. VPN-Status in den Einstellungen prüfen; der Torrent-Schutz bleibt aktiv.</string>
+    <string name="sm_connection_recheck_unavailable">Erneute Prüfung nur bei Freigabe durch den VPN-Manager möglich. VPN gegebenenfalls in den Einstellungen verbinden.</string>
+    <string name="sm_connection_profile">VPN-Profil</string>
+    <string name="sm_connection_exit_location">Verifizierter Ausgangsstandort</string>
+    <string name="sm_connection_unknown">Nicht verfügbar</string>
+    <string name="sm_connection_not_verified">Aktuell nicht verifiziert</string>
+    <string name="sm_connection_last_verified">Letzte Ausgangsprüfung</string>
+    <string name="sm_connection_last_handshake">Letzter WireGuard-Handshake</string>
+    <string name="sm_connection_vpn_download">VPN-Download</string>
+    <string name="sm_connection_vpn_upload">VPN-Upload</string>
+    <string name="sm_connection_received">VPN empfangen (Rx)</string>
+    <string name="sm_connection_sent">VPN gesendet (Tx)</string>
+    <string name="sm_connection_chart_title">Letzter VPN-Traffic</string>
+    <string name="sm_connection_chart_empty">Keine aktuellen VPN-Traffic-Messwerte vorhanden.</string>
+    <string name="sm_connection_chart_evidence">%1$d echte Messpunkte über %2$d Sekunden · Spitze %3$s</string>
+    <string name="sm_connection_traffic_source">Bytes pro Sekunde aus dem vorhandenen App-WireGuard-Monitor; keine Torrent-Raten und kein Traffic aller Apps auf dem Gerät. Die Kurve zeigt nur tatsächlich vorliegende Messpunkte.</string>
+    <string name="sm_connection_cache_title">Torrent-Datenträgercache</string>
+    <string name="sm_connection_cache_unknown">Cache-Belegung bisher nicht gemessen; unbekannt bedeutet nicht null.</string>
+    <string name="sm_connection_cache_used">Cache belegt</string>
+    <string name="sm_connection_cache_protected">Geschützte Daten</string>
+    <string name="sm_connection_cache_limit">Eingestelltes Cache-Limit</string>
+    <string name="sm_connection_cache_disabled">Kein dauerhafter Cache</string>
+    <string name="sm_connection_cache_clearing">Cache wird gerade bereinigt…</string>
+    <string name="sm_connection_cache_note">Geschützte Bytes sind nicht automatisch löschbar. Das eingestellte Limit ist keine Messung der Belegung; Limits und Bereinigung liegen weiterhin in den P2P-Einstellungen.</string>
 </resources>
