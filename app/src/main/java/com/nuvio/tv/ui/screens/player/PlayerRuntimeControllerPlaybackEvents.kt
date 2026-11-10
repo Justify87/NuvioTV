@@ -395,7 +395,7 @@ internal fun PlayerRuntimeController.startProgressUpdates() {
                     // MPV exposes selected track metadata, but position advancement is
                     // NOT proof of a rendered first frame. Leave startup and rebuffer
                     // timings unknown until this backend has a true render callback.
-                    if (isTorrentStream) monitorSessionId?.let {
+                    if (isTorrentStream && view.isPositionFromRequestedMedia()) monitorSessionId?.let {
                         torrentService.sessionHistory.updateMediaInfo(
                             it, view.readPlayerMediaInfo().asTorrentMediaProfile()
                         )
