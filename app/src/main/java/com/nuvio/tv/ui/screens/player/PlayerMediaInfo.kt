@@ -4,6 +4,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import com.nuvio.tv.core.torrent.TorrentMediaProfile
 
 data class PlayerMediaInfo(
     val videoCodec: String? = null,
@@ -13,7 +14,8 @@ data class PlayerMediaInfo(
     val audioProfiles: List<String> = emptyList(),
     val audioChannels: Int? = null,
     val hdr: List<String> = emptyList(),
-    val bitDepth: Int? = null
+    val bitDepth: Int? = null,
+    val videoBitrateBitsPerSecond: Long? = null
 )
 
 internal fun PlayerRuntimeController.playerMediaInfo(): PlayerMediaInfo =
@@ -39,9 +41,10 @@ internal fun mpvMediaInfo(property: (String) -> String?): PlayerMediaInfo =
             }
         },
         bitDepth = property("video-params/pixelformat")?.let(::mpvBitDepth)
+        // MPV does not expose a trustworthy *selected video-track* bitrate here.
     )
 
-private fun exoMediaInfo(video: Format?, audio: Format?): PlayerMediaInfo =
+internal fun exoMediaInfo(video: Format?, audio: Format?): PlayerMediaInfo =
     PlayerMediaInfo(
         videoCodec = exoVideoCodec(video),
         videoWidth = video?.width?.takeIf { it > 0 },
@@ -50,7 +53,8 @@ private fun exoMediaInfo(video: Format?, audio: Format?): PlayerMediaInfo =
         audioProfiles = exoAudioProfiles(audio),
         audioChannels = audio?.channelCount?.takeIf { it > 0 },
         hdr = video?.hdrFormats().orEmpty(),
-        bitDepth = video?.exoBitDepth()
+        bitDepth = video?.exoBitDepth(),
+        videoBitrateBitsPerSecond = video?.bitrate?.takeIf { it > 0 }?.toLong()
     )
 
 private fun exoVideoCodec(video: Format?): String? {
@@ -143,3 +147,14 @@ private fun mpvCodecLabel(codec: String): String? =
             else -> codec.trim().uppercase()
         }
     }
+
+/** Explicit conversion of player-selected formats; never infer these from torrent filenames. */
+internal fun PlayerMediaInfo.asTorrentMediaProfile(): TorrentMediaProfile = TorrentMediaProfile(
+    width = videoWidth,
+    height = videoHeight,
+    videoCodec = videoCodec,
+    hdr = hdr,
+    audioCodec = audioCodec,
+    audioChannels = audioChannels,
+    videoBitrateBitsPerSecond = videoBitrateBitsPerSecond
+).sanitized()
