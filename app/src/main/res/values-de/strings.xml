@@ -2318,4 +2318,27 @@
     <string name="sm_history_row_network">Upload Ø %1$s · Peers Peak %2$s · Seeder Peak %3$s</string>
     <string name="sm_history_row_volume">Geladen %1$s · Unterbrechungen %2$d</string>
     <string name="sm_player_action">Streaming-Monitor im Hauptmenü finden</string>
+    <string name="sm_quality_title">Tatsächlich beobachtete Medienqualität</string>
+    <string name="sm_quality_resolution">Videoauflösung des Players</string>
+    <string name="sm_quality_video_codec">Videocodec</string>
+    <string name="sm_quality_hdr">HDR-Format</string>
+    <string name="sm_quality_audio_codec">Audiocodec</string>
+    <string name="sm_quality_audio_channels">Audiokanäle</string>
+    <string name="sm_quality_video_bitrate">Videobitrate der ausgewählten Spur</string>
+    <string name="sm_quality_unavailable">Nicht verfügbar</string>
+    <string name="sm_quality_media_source">Nur tatsächlich erkannte Player-Spuren werden angezeigt. MPV/Media3 liefern nicht immer alle Angaben; Dateinamen-Hinweise sind separat.</string>
+    <string name="sm_quality_stability">Streaming-Stabilität (nur diese Sitzung)</string>
+    <string name="sm_quality_start">Torrentstart bis zum ersten tatsächlich gerenderten Bild</string>
+    <string name="sm_quality_rebuffers">Unterbrechungen nach dem ersten Bild</string>
+    <string name="sm_quality_buffer_duration">Gemessene Gesamtpufferdauer</string>
+    <string name="sm_quality_ratio">Torrent-Download im Mittel / Videobitrate</string>
+    <string name="sm_quality_ratio_note">Zusatzvergleich von Byte/s × 8 mit bit/s; keine Garantie für ruckelfreies Streaming.</string>
+    <string name="sm_quality_timing_source">Media3 nutzt tatsächliche First-Frame- und Wiedergabezustands-Ereignisse. Für MPV fehlt hier ein verifizierter Render-Callback; Start- und Pufferzeiten bleiben daher unbekannt.</string>
+    <string name="sm_quality_legacy">Bisherige Bewertung (Geschwindigkeits-/Zählheuristik, keine bestätigte Wiedergabequalität)</string>
+    <string name="sm_outcome_cancelled">Vor der Wiedergabe abgebrochen</string>
+    <string name="sm_outcome_failed">Fehlgeschlagen</string>
+    <string name="sm_outcome_finished">Beendet</string>
+    <string name="sm_outcome_unknown">Messung unvollständig</string>
+    <string name="sm_outcome_legacy">Alte Historie (Wiedergabeergebnis unbekannt)</string>
+    <string name="sm_kpi_basis_v2">%1$d von %2$d Sitzungen mit bestätigtem erstem Bild und vollständigen Pufferdaten endeten ohne Ruckeln. Altbestand/Unbekannte ausgeschlossen.</string>
 </resources>
