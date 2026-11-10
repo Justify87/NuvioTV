@@ -227,6 +227,10 @@ private fun String.safeMpvTraceHost(): String {
 }
 
 internal fun PlayerRuntimeController.pauseForLifecycle() {
+    // A lifecycle pause must never complete an in-flight rebuffer as a network stall.
+    if (isTorrentStream) monitorSessionId?.let {
+        torrentService.sessionHistory.onRebufferEnd(it, resumed = false)
+    }
     // Mark we're in background so onPlayerError can defer recovery to onResume.
     isInBackground = true
 
