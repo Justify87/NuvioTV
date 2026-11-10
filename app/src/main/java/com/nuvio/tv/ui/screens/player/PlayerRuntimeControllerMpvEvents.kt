@@ -278,6 +278,9 @@ internal fun PlayerRuntimeController.handleMpvPlaybackError(
         val retryCanHelp = httpCode == null || !isPermanentHttpStatus(httpCode)
         if (retryCanHelp && attemptMpvAutoRetry(detailedError = detailedError, savedPosition = savedPosition)) return
 
+        if (isTorrentStream) monitorSessionId?.let {
+            torrentService.sessionHistory.markPlaybackFailed(it)
+        }
         finishLoadingDiagnostics("mpv_error")
         cancelNextEpisodeAutoPlayOnFatalError()
         _uiState.update {
