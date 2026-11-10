@@ -40,7 +40,9 @@ internal class TorrentCleanupCoordinator<T : Any>(
     }
 
     private fun startWorkerLocked() {
-        worker = scope.launch(start = CoroutineStart.LAZY) { drain() }.also { it.start() }
+        val newWorker = scope.launch(start = CoroutineStart.LAZY) { drain() }
+        worker = newWorker
+        newWorker.start()
     }
 
     private suspend fun drain() {
