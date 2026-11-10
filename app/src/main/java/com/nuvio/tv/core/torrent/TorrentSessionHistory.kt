@@ -182,42 +182,15 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
         val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
         val fresh = observed.sanitized()
         val previous = current.mediaProfile
-        _live.value = current.copy(mediaProfile = fresh.copy(
+        val merged = fresh.copy(
             width = fresh.width ?: previous?.width, height = fresh.height ?: previous?.height,
             videoCodec = fresh.videoCodec ?: previous?.videoCodec,
             hdr = if (fresh.hdr.isEmpty()) previous?.hdr.orEmpty() else fresh.hdr,
             audioCodec = fresh.audioCodec ?: previous?.audioCodec,
             audioChannels = fresh.audioChannels ?: previous?.audioChannels,
             videoBitrateBitsPerSecond = fresh.videoBitrateBitsPerSecond ?: previous?.videoBitrateBitsPerSecond
-        ))
-    }
-
-    /** Post-first-frame interruption, never initial preload, seek or pause. */
-    @Synchronized fun onRebufferStart(sessionId: String, elapsedMs: Long = SystemClock.elapsedRealtime()) {
-        val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
-        if (current.firstFrameMs == null || rebufferStartedElapsed != null || elapsedMs < startElapsed) return
-        rebufferStartedElapsed = elapsedMs
-    }
-
-    @Synchronized fun onRebufferEnd(
-        sessionId: String, elapsedMs: Long = SystemClock.elapsedRealtime(), resumed: Boolean = true
-    ) {
-        val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
-        val start = rebufferStartedElapsed ?: return
-        rebufferStartedElapsed = null
-        // Pausing, seeking, backgrounding or releasing is not completed rebuffering.
-        if (!resumed || elapsedMs <= start || current.firstFrameMs == null) return
-        val duration = elapsedMs - start
-        val count = (current.rebufferCount ?: 0) + 1
-        _live.value = current.copy(
-            rebufferCount = count, rebufferTotalMs = (current.rebufferTotalMs ?: 0L) + duration,
-            bufferEvents = count
         )
-    }
-
-    @Synchronized fun markPlaybackFailed(sessionId: String) {
-        val current = _live.value?.takeIf { it.sessionId == sessionId } ?: return
-        _live.value = current.copy(outcome = TorrentSessionOutcome.FAILED, failed = true)
+        if (merged != previous) _live.value = current.copy(mediaProfile = merged)
     }
 
     /** Call may be frequent; sampling is capped at once per second to avoid UI churn. */
