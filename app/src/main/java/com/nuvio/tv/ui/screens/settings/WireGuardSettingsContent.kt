@@ -185,9 +185,7 @@ internal fun WireGuardSettingsContent(
                 )
                 SettingsActionRow(
                     title = if (info.status == TorrentVpnSafety.Status.VERIFIED) "Erneut überprüfen" else "VPN verbinden",
-                    subtitle = if (info.status == TorrentVpnSafety.Status.VERIFIED)
-                        "Prüft die bestehende Verbindung, ohne sie neu aufzubauen"
-                    else "Erfordert Android-VPN-Berechtigung und eine Mullvad-WireGuard-Datei",
+                    subtitle = "Erfordert Android-VPN-Berechtigung und eine Mullvad-WireGuard-Datei",
                     onClick = {
                         if (!vpnActionInProgress) {
                             dispatchVpnSettingsAction(
