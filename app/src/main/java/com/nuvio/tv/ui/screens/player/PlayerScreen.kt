@@ -251,17 +251,6 @@ fun PlayerScreen(
     val vpnDisplay by vpnPreferences.state.collectAsState()
     var vpnStatusOpen by remember { mutableStateOf(false) }
     val vpnScope = rememberCoroutineScope()
-    val torrentSessions = remember(context) { (context.applicationContext as NuvioApplication).torrentSessionHistory }
-    var torrentHasPlayed by remember { mutableStateOf(false) }
-    LaunchedEffect(uiState.isTorrentStream, uiState.isPlaying) {
-        if (!uiState.isTorrentStream) torrentHasPlayed = false
-        else if (uiState.isPlaying) torrentHasPlayed = true
-    }
-    LaunchedEffect(uiState.isTorrentStream, uiState.isBuffering) {
-        if (uiState.isTorrentStream && uiState.isBuffering && torrentHasPlayed) {
-            torrentSessions.noteBuffering()
-        }
-    }
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val containerFocusRequester = remember { FocusRequester() }
     val playPauseFocusRequester = remember { FocusRequester() }
