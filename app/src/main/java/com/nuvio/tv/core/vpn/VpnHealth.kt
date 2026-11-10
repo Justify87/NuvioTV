@@ -16,3 +16,7 @@ fun WireGuardInfo.health(now: Long = System.currentTimeMillis()): VpnHealth = wh
     TorrentVpnSafety.Status.VERIFIED -> if (lastVerifiedAt > 0L && now >= lastVerifiedAt &&
         now - lastVerifiedAt <= 90_000L) VpnHealth.CONNECTED else VpnHealth.CHECKING
 }
+
+/** A manual recheck is possible even if the last VERIFIED result is too old to display green. */
+internal fun WireGuardInfo.canRefreshVerification(): Boolean =
+    status == TorrentVpnSafety.Status.VERIFIED
