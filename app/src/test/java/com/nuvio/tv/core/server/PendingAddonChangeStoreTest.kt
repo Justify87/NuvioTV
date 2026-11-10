@@ -40,21 +40,19 @@ class PendingAddonChangeStoreTest {
     }
 
     @Test
-    fun `unanswered request expires and its rejection is eventually removed`() {
+    fun `unanswered request survives time until the TV can confirm it`() {
         var now = 0L
-        val store = PendingAddonChangeStore(
-            clockMillis = { now }, pendingTimeoutMillis = 1_000, completedRetentionMillis = 500
-        )
-        store.add(change("stale"))
+        val store = PendingAddonChangeStore(clockMillis = { now }, completedRetentionMillis = 500)
+        store.add(change("waiting"))
 
-        now = 999
-        assertEquals(AddonChangeStatus.PENDING, store.status("stale"))
-        now = 1_000
-        assertEquals(AddonChangeStatus.REJECTED, store.status("stale"))
-        now = 1_499
-        assertEquals(AddonChangeStatus.REJECTED, store.status("stale"))
-        now = 1_500
-        assertNull(store.status("stale"))
+        now = 60 * 60_000L
+        assertEquals(AddonChangeStatus.PENDING, store.status("waiting"))
+        store.confirm("waiting")
+        assertEquals(AddonChangeStatus.CONFIRMED, store.status("waiting"))
+        now += 499
+        assertEquals(AddonChangeStatus.CONFIRMED, store.status("waiting"))
+        now += 1
+        assertNull(store.status("waiting"))
     }
 
     @Test
