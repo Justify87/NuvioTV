@@ -25,6 +25,7 @@ class WireGuardNetworkLossTest {
 
     @Test fun rapidAtoBtoASwitchIgnoresObsoleteLosses() {
         var observed: Network? = networkA
+        assertTrue(shouldHandleNetworkLoss(observed, networkA))
         observed = networkB
         assertFalse(shouldHandleNetworkLoss(observed, networkA))
 
