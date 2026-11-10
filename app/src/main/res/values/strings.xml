@@ -2462,6 +2462,13 @@
     <string name="nav_discover">Discover</string>
     <string name="nav_search">Search</string>
     <string name="nav_library">Library</string>
+    <string name="nav_streaming_monitor">Streaming-Monitor</string>
+    <string name="streaming_monitor_tab_overview">Overview</string>
+    <string name="streaming_monitor_tab_history">History</string>
+    <string name="streaming_monitor_tab_connection">Connection</string>
+    <string name="streaming_monitor_m01_overview">Live streaming measurements will appear in M02.</string>
+    <string name="streaming_monitor_m01_history">Session history will be added in M03.</string>
+    <string name="streaming_monitor_m01_connection">VPN and cache information will be added in M05.</string>
     <string name="nav_addons">Addons</string>
     <string name="nav_movies">Movies</string>
     <string name="nav_series">Series</string>

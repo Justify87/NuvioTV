@@ -1611,6 +1611,13 @@
     <string name="nav_discover">Entdecken</string>
     <string name="nav_search">Suchen</string>
     <string name="nav_library">Bibliothek</string>
+    <string name="nav_streaming_monitor">Streaming-Monitor</string>
+    <string name="streaming_monitor_tab_overview">Übersicht</string>
+    <string name="streaming_monitor_tab_history">Verlauf</string>
+    <string name="streaming_monitor_tab_connection">Verbindung</string>
+    <string name="streaming_monitor_m01_overview">Live-Daten erscheinen in M02.</string>
+    <string name="streaming_monitor_m01_history">Der Sitzungsverlauf folgt in M03.</string>
+    <string name="streaming_monitor_m01_connection">VPN- und Cache-Informationen folgen in M05.</string>
     <string name="nav_addons">Addons</string>
     <string name="nav_movies">Filme</string>
     <string name="nav_series">Serien</string>
