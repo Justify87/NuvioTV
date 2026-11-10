@@ -4,16 +4,21 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertExists
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNode
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.key.pressKey
 import androidx.test.platform.app.InstrumentationRegistry
 import com.nuvio.tv.R
 import com.nuvio.tv.core.torrent.TorrentState
+import com.nuvio.tv.core.torrent.TorrentSessionStats
+import java.util.concurrent.atomic.AtomicInteger
+import org.junit.Assert.assertEquals
 import com.nuvio.tv.ui.theme.NuvioTheme
 import org.junit.Rule
 import org.junit.Test
@@ -73,4 +78,68 @@ class StreamingMonitorDpadTest {
         composeRule.waitForIdle()
         composeRule.onNode(overviewTab).assertIsNotFocused()
     }
+    @Test
+    fun `history row opens full-height detail and back returns to saved list`() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val title = "Public demo session"
+        composeRule.setContent {
+            NuvioTheme {
+                StreamingMonitorScreenContent(
+                    overviewState = StreamingMonitorUiState(
+                        isLoading = false,
+                        savedSessions = listOf(
+                            TorrentSessionStats(title = title, startedAtMs = 1_000_000L, samples = 2)
+                        ),
+                        recentCount = 1
+                    )
+                )
+            }
+        }
+        val historyTab = hasText(context.getString(R.string.streaming_monitor_tab_history)) and hasClickAction()
+        composeRule.onNode(historyTab).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNode(hasText(title) and hasClickAction()).performClick()
+        composeRule.waitForIdle()
+        val back = hasText(context.getString(R.string.sm_history_back)) and hasClickAction()
+        composeRule.onNode(back).assertExists()
+        composeRule.onNode(back).performKeyInput { pressKey(Key.Back) }
+        composeRule.waitForIdle()
+        composeRule.onNode(hasText(title) and hasClickAction()).assertExists()
+        composeRule.onNode(back).assertDoesNotExist()
+    }
+
+    @Test
+    fun `clear history demands explicit confirmation and cancel leaves data untouched`() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val clearCalls = AtomicInteger()
+        composeRule.setContent {
+            NuvioTheme {
+                StreamingMonitorScreenContent(
+                    overviewState = StreamingMonitorUiState(
+                        isLoading = false,
+                        savedSessions = listOf(
+                            TorrentSessionStats(title = "Public demo session", startedAtMs = 1_000_000L)
+                        ),
+                        recentCount = 1
+                    ),
+                    onClearHistory = { clearCalls.incrementAndGet() }
+                )
+            }
+        }
+        composeRule.onNode(
+            hasText(context.getString(R.string.streaming_monitor_tab_history)) and hasClickAction()
+        ).performClick()
+        composeRule.onNode(hasText(context.getString(R.string.sm_history_clear)) and hasClickAction())
+            .performClick()
+        composeRule.onNode(hasText(context.getString(R.string.sm_history_cancel))).performClick()
+        assertEquals(0, clearCalls.get())
+        composeRule.onNode(hasText(context.getString(R.string.sm_history_clear)) and hasClickAction())
+            .performClick()
+        composeRule.onNode(hasText(context.getString(R.string.sm_history_clear_confirm_message))).assertExists()
+        // Modal confirmation is the only control allowed to invoke the destructive callback.
+        composeRule.onNode(hasText(context.getString(R.string.sm_history_clear)) and hasClickAction())
+            .performClick()
+        assertEquals(1, clearCalls.get())
+    }
+
 }
