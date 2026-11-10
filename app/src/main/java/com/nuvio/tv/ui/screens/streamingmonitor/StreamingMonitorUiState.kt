@@ -111,9 +111,10 @@ internal fun monitorUiState(
         is TorrentState.Error -> TorrentPhase.ERROR
     }
     val active = phase == TorrentPhase.CONNECTING || phase == TorrentPhase.STREAMING
-    val measured = phase == TorrentPhase.STREAMING
+    // The initial engine state may contain defaults. A session sample confirms observation.
+    val measured = phase == TorrentPhase.STREAMING && (live?.samples ?: 0) > 0
     val rates = if (measured) torrentRates(torrent) else null
-    val stream = torrent as? TorrentState.Streaming
+    val stream = (torrent as? TorrentState.Streaming).takeIf { measured }
     return StreamingMonitorUiState(
         activeSession = live.takeIf { active },
         torrentPhase = phase,
@@ -127,7 +128,8 @@ internal fun monitorUiState(
         historyRecordingEnabled = recordingEnabled,
         p2pEnabled = p2pEnabled,
         isLoading = false,
-        hasEngineMeasurement = rates != null,
+        hasEngineMeasurement = rates?.downloadBytesPerSecond != null ||
+            rates?.uploadBytesPerSecond != null,
         hasRecordedMeasurements = history.any { it.samples > 0 && it.durationMs > 0L }
     )
 }
