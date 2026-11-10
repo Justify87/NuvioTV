@@ -26,7 +26,7 @@ class StreamingMonitorDpadTest {
         val connection = context.getString(R.string.streaming_monitor_tab_connection)
 
         composeRule.setContent {
-            NuvioTheme { StreamingMonitorScreen() }
+            NuvioTheme { StreamingMonitorScreenContent() }
         }
         composeRule.waitForIdle()
         val overviewTab = hasText(overview) and hasClickAction()
