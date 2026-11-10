@@ -31,6 +31,7 @@ class AndroidTvChannelManager @Inject constructor(
     private val prefs: TvChannelPreferences,
 ) {
     private val syncedProgramFingerprints = ConcurrentHashMap<String, ChannelProgramFingerprint>()
+    private val syncedNextUpFingerprints = ConcurrentHashMap<String, ChannelProgramFingerprint>()
 
     private data class ChannelProgramFingerprint(
         val title: String?,
@@ -82,7 +83,7 @@ class AndroidTvChannelManager @Inject constructor(
                 if (idIdx < 0 || providerIdx < 0) return@use null
                 while (c.moveToNext()) {
                     val providerId = c.getString(providerIdx)
-                    if (providerId != null && providerId.startsWith(context.packageName)) {
+                    if (providerId == context.packageName) {
                         return@use c.getLong(idIdx)
                     }
                 }
@@ -122,13 +123,85 @@ class AndroidTvChannelManager @Inject constructor(
     }
 
     /**
+     * A separate, explicit Next Up channel distinguishes already-aired upcoming episodes
+     * from resumed playback without changing the existing mixed Continue Watching channel.
+     * The provider ID is stable across localized display names and app restarts.
+     */
+    suspend fun ensureNextUpChannel(): Long? = withContext(Dispatchers.IO) {
+        if (!isSupported()) return@withContext null
+        runCatching {
+            val providerId = "${context.packageName}:next-up"
+            val stored = prefs.getNextUpChannelId()
+            if (stored != null) {
+                context.contentResolver.query(
+                    TvContractCompat.buildChannelUri(stored),
+                    arrayOf(
+                        TvContractCompat.Channels._ID,
+                        TvContractCompat.Channels.COLUMN_INTERNAL_PROVIDER_ID
+                    ),
+                    null, null, null
+                )?.use { cursor ->
+                    val idIndex = cursor.getColumnIndex(TvContractCompat.Channels.COLUMN_INTERNAL_PROVIDER_ID)
+                    if (idIndex >= 0 && cursor.moveToFirst() && cursor.getString(idIndex) == providerId) {
+                        return@runCatching stored
+                    }
+                }
+                prefs.clearNextUpChannelId()
+            }
+
+            val existing = context.contentResolver.query(
+                TvContractCompat.Channels.CONTENT_URI,
+                arrayOf(
+                    TvContractCompat.Channels._ID,
+                    TvContractCompat.Channels.COLUMN_INTERNAL_PROVIDER_ID
+                ), null, null, null
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(TvContractCompat.Channels._ID)
+                val providerIndex = cursor.getColumnIndex(TvContractCompat.Channels.COLUMN_INTERNAL_PROVIDER_ID)
+                if (idIndex < 0 || providerIndex < 0) return@use null
+                while (cursor.moveToNext()) {
+                    if (cursor.getString(providerIndex) == providerId) return@use cursor.getLong(idIndex)
+                }
+                null
+            }
+            if (existing != null) {
+                prefs.setNextUpChannelId(existing)
+                return@runCatching existing
+            }
+
+            val appIntent = Uri.parse(Intent(context, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }.toUri(Intent.URI_INTENT_SCHEME))
+            val channel = Channel.Builder()
+                .setType(TvContractCompat.Channels.TYPE_PREVIEW)
+                .setDisplayName(context.getString(R.string.tv_channel_next_up))
+                .setAppLinkIntentUri(appIntent)
+                .setInternalProviderId(providerId)
+                .build()
+            val inserted = context.contentResolver.insert(
+                TvContractCompat.Channels.CONTENT_URI, channel.toContentValues()
+            ) ?: return@runCatching null
+            val id = ContentUris.parseId(inserted)
+            prefs.setNextUpChannelId(id)
+            writeChannelLogo(id)
+            TvContractCompat.requestChannelBrowsable(context, id)
+            id
+        }.onFailure { Log.w(TAG, "ensureNextUpChannel failed", it) }.getOrNull()
+    }
+
+    /**
      * Syncs [items] to the Continue Watching channel: upserts present items and
      * removes rows that are no longer in the list (completed or dismissed).
      */
-    suspend fun reconcile(items: List<WatchProgress>) = withContext(Dispatchers.IO) {
+    suspend fun reconcile(items: List<WatchProgress>) = reconcileChannel(items, nextUp = false)
+
+    suspend fun reconcileNextUp(items: List<WatchProgress>) = reconcileChannel(items, nextUp = true)
+
+    private suspend fun reconcileChannel(items: List<WatchProgress>, nextUp: Boolean) = withContext(Dispatchers.IO) {
         if (!isSupported()) return@withContext
         runCatching {
-            val channelId = ensureChannel() ?: return@runCatching
+            val channelId = (if (nextUp) ensureNextUpChannel() else ensureChannel()) ?: return@runCatching
+            val fingerprints = if (nextUp) syncedNextUpFingerprints else syncedProgramFingerprints
             val existing = queryExistingPrograms(channelId)
             val desiredKeys = items.map { progressKey(it) }.toSet()
 
@@ -140,7 +213,7 @@ class AndroidTvChannelManager @Inject constructor(
                         )
                         Log.d(TAG, "Removed program key=$key rowId=$rowId")
                     }
-                    syncedProgramFingerprints.remove(key)
+                    fingerprints.remove(key)
                 }
             }
 
@@ -217,17 +290,19 @@ class AndroidTvChannelManager @Inject constructor(
     suspend fun clearAll() = withContext(Dispatchers.IO) {
         if (!isSupported()) return@withContext
         runCatching {
-            val channelId = prefs.getChannelId() ?: return@runCatching
-            val rows = queryExistingPrograms(channelId)
+            val channelIds = listOfNotNull(prefs.getChannelId(), prefs.getNextUpChannelId()).distinct()
             var deletedCount = 0
-            rows.values.flatten().forEach { rowId ->
-                context.contentResolver.delete(
-                    TvContractCompat.buildPreviewProgramUri(rowId), null, null
-                )
-                deletedCount++
+            for (channelId in channelIds) {
+                queryExistingPrograms(channelId).values.flatten().forEach { rowId ->
+                    context.contentResolver.delete(
+                        TvContractCompat.buildPreviewProgramUri(rowId), null, null
+                    )
+                    deletedCount++
+                }
             }
             syncedProgramFingerprints.clear()
-            Log.d(TAG, "Cleared $deletedCount programs for channel $channelId")
+            syncedNextUpFingerprints.clear()
+            Log.d(TAG, "Cleared $deletedCount programs across ${channelIds.size} channels")
         }.onFailure { Log.w(TAG, "clearAll failed", it) }
     }
 
