@@ -729,6 +729,8 @@ class PlayerRuntimeController(
     internal var hasDetectedAssSsaTrackForCurrentStream: Boolean = false
     internal var libassPipelineDecisionStreamUrl: String? = null
     internal var torrentStreamJob: Job? = null
+    /** Bound to this torrent route; never reassociate callbacks with the last played stream. */
+    internal var monitorSessionId: String? = null
     internal var torrentStateObserverJob: Job? = null
     internal var isTorrentStream: Boolean = navigationArgs.infoHash != null && !initialStreamUrl.startsWith("http")
     internal var currentInfoHash: String? = navigationArgs.infoHash
