@@ -31,6 +31,7 @@ import com.nuvio.tv.core.vpn.TorrentVpnSafety
 import com.nuvio.tv.core.vpn.importWireGuardProfileFromUri
 import com.nuvio.tv.core.vpn.wireGuardImportErrorMessage
 import com.nuvio.tv.ui.theme.NuvioTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -38,6 +39,15 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+
+/** Routes the settings button without touching the existing tunnel on recheck. */
+internal fun dispatchVpnSettingsAction(
+    status: TorrentVpnSafety.Status,
+    onRefresh: () -> Unit,
+    onConnect: () -> Unit
+) {
+    if (status == TorrentVpnSafety.Status.VERIFIED) onRefresh() else onConnect()
+}
 
 /** TV remote-first WireGuard controls; no other VPN app is required. */
 @Composable
@@ -60,17 +70,29 @@ internal fun WireGuardSettingsContent(
     LaunchedEffect(profiles) { selected = vpn.selectedId }
     var autoConnect by remember { mutableStateOf(vpn.autoConnectEnabled) }
     var message by remember { mutableStateOf<String?>(null) }
+    var vpnActionInProgress by remember { mutableStateOf(false) }
     var renameId by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
 
-    fun connect() {
+    fun runVpnAction(successMessage: String?, action: suspend () -> Unit) {
+        if (vpnActionInProgress) return
+        vpnActionInProgress = true
         scope.launch {
-            runCatching { vpn.connect() }
-                .onSuccess { message = null }
-                .onFailure { message = it.message ?: "VPN connection failed" }
+            try {
+                action()
+                message = successMessage
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (error: Exception) {
+                message = error.message ?: "VPN action failed"
+            } finally {
+                vpnActionInProgress = false
+            }
         }
     }
+    fun connect() = runVpnAction(null) { vpn.connect() }
     val consent = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        vpnActionInProgress = false
         if (it.resultCode == Activity.RESULT_OK && VpnService.prepare(context) == null) connect()
         else message = "VPN permission was not granted"
     }
@@ -165,8 +187,21 @@ internal fun WireGuardSettingsContent(
                     title = if (info.status == TorrentVpnSafety.Status.VERIFIED) "Erneut überprüfen" else "VPN verbinden",
                     subtitle = "Erfordert Android-VPN-Berechtigung und eine Mullvad-WireGuard-Datei",
                     onClick = {
-                        val request = vpn.vpnConsentIntent()
-                        if (request != null) consent.launch(request) else connect()
+                        if (!vpnActionInProgress) {
+                            dispatchVpnSettingsAction(
+                                status = info.status,
+                                onRefresh = {
+                                    runVpnAction("VPN-Verbindung erfolgreich überprüft") { vpn.refreshVerification() }
+                                },
+                                onConnect = {
+                                    val request = vpn.vpnConsentIntent()
+                                    if (request != null) {
+                                        vpnActionInProgress = true
+                                        consent.launch(request)
+                                    } else connect()
+                                }
+                            )
+                        }
                     },
                     modifier = if (initialFocusRequester != null) Modifier.focusRequester(initialFocusRequester) else Modifier
                 )
