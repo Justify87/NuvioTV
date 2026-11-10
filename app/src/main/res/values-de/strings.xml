@@ -2341,4 +2341,5 @@
     <string name="sm_outcome_unknown">Messung unvollständig</string>
     <string name="sm_outcome_legacy">Alte Historie (Wiedergabeergebnis unbekannt)</string>
     <string name="sm_kpi_basis_v2">%1$d von %2$d Sitzungen mit bestätigtem erstem Bild und vollständigen Pufferdaten endeten ohne Ruckeln. Altbestand/Unbekannte ausgeschlossen.</string>
+    <string name="sm_history_row_volume_v2">Heruntergeladen %1$s · beobachtete Unterbrechungen %2$s</string>
 </resources>
