@@ -3,6 +3,9 @@ package com.nuvio.tv.core.server
 import android.content.Context
 import com.nuvio.tv.R
 import fi.iki.elonen.NanoHTTPD
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.nio.charset.StandardCharsets
 
 class CustomPosterConfigServer(
@@ -31,16 +34,25 @@ class CustomPosterConfigServer(
 
     private fun serveCurrentPattern(): Response {
         val pattern = currentPatternProvider()
+        val body = Json.encodeToString(
+            JsonObject.serializer(),
+            JsonObject(mapOf("pattern" to JsonPrimitive(pattern)))
+        )
         return newFixedLengthResponse(
             Response.Status.OK,
             "application/json; charset=utf-8",
-            """{"pattern":"${pattern.replace("\"", "\\\"")}"}"""
+            body
         )
     }
 
     private fun handlePatternUpdate(session: IHTTPSession): Response {
         val body = readUtf8Body(session)
-        val pattern = extractJsonString(body, "pattern")
+        val pattern = runCatching {
+            val payload = Json.parseToJsonElement(body) as? JsonObject
+            (payload?.get("pattern") as? JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.content
+        }.getOrNull()
         if (pattern == null) {
             return newFixedLengthResponse(
                 Response.Status.BAD_REQUEST,
@@ -63,26 +75,6 @@ class CustomPosterConfigServer(
             "application/json; charset=utf-8",
             """{"status":"cleared"}"""
         )
-    }
-
-    private fun extractJsonString(json: String, key: String): String? {
-        // Simple extraction without pulling in a JSON library
-        val keyPattern = "\"$key\""
-        val keyIndex = json.indexOf(keyPattern)
-        if (keyIndex < 0) return null
-        val colonIndex = json.indexOf(':', keyIndex + keyPattern.length)
-        if (colonIndex < 0) return null
-        val rest = json.substring(colonIndex + 1).trimStart()
-        if (rest.isEmpty()) return null
-        return if (rest.startsWith("\"")) {
-            val endQuote = rest.indexOf('"', 1)
-            if (endQuote < 0) null
-            else rest.substring(1, endQuote).replace("\\\"", "\"").replace("\\\\", "\\")
-        } else {
-            // unquoted value - take until comma or closing brace
-            val end = rest.indexOfFirst { it == ',' || it == '}' }
-            if (end < 0) rest.trim() else rest.substring(0, end).trim()
-        }
     }
 
     private fun readUtf8Body(session: IHTTPSession): String {
