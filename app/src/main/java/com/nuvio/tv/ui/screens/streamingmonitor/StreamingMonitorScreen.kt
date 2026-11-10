@@ -40,6 +40,8 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.ExperimentalTvMaterial3Api
@@ -51,24 +53,34 @@ import com.nuvio.tv.R
 import com.nuvio.tv.ui.theme.NuvioTheme
 
 /** Fixed tab order so saved tab indices remain stable across screen recreation. */
-internal enum class StreamingMonitorTab(
-    @StringRes val titleRes: Int,
-    @StringRes val emptyMessageRes: Int
-) {
-    Overview(R.string.streaming_monitor_tab_overview, R.string.streaming_monitor_m01_overview),
-    History(R.string.streaming_monitor_tab_history, R.string.streaming_monitor_m01_history),
-    Connection(R.string.streaming_monitor_tab_connection, R.string.streaming_monitor_m01_connection)
+internal enum class StreamingMonitorTab(@StringRes val titleRes: Int) {
+    Overview(R.string.streaming_monitor_tab_overview),
+    History(R.string.streaming_monitor_tab_history),
+    Connection(R.string.streaming_monitor_tab_connection)
 }
 
 internal fun streamingMonitorTabOrOverview(index: Int): StreamingMonitorTab =
     StreamingMonitorTab.entries.getOrNull(index) ?: StreamingMonitorTab.Overview
 
 /**
- * M01 builds the root page and D-pad controls only. No services, polling or telemetry are started.
- * The three temporary messages are intentionally replaced by the respective later milestones.
+ * NavHost entry. Lifecycle-aware subscription; no UI timer or direct TorrentService call.
+ * The child is intentionally pure so Android-TV D-pad tests need no mocked Hilt graph.
  */
 @Composable
-fun StreamingMonitorScreen(showBuiltInHeader: Boolean = true) {
+fun StreamingMonitorScreen(
+    showBuiltInHeader: Boolean = true,
+    viewModel: StreamingMonitorViewModel = hiltViewModel()
+) {
+    val overviewState by viewModel.uiState.collectAsStateWithLifecycle()
+    StreamingMonitorScreenContent(showBuiltInHeader, overviewState)
+}
+
+/** M02 owns the Overview. History and Connection stay neutral until M03/M05. */
+@Composable
+internal fun StreamingMonitorScreenContent(
+    showBuiltInHeader: Boolean = true,
+    overviewState: StreamingMonitorUiState = StreamingMonitorUiState(isLoading = false)
+) {
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(StreamingMonitorTab.Overview.ordinal) }
     var lastFocusedTabIndex by rememberSaveable { mutableIntStateOf(StreamingMonitorTab.Overview.ordinal) }
     var restoreContentFocus by rememberSaveable { mutableStateOf(false) }
@@ -81,8 +93,6 @@ fun StreamingMonitorScreen(showBuiltInHeader: Boolean = true) {
     val focusedTabIndex = streamingMonitorTabOrOverview(lastFocusedTabIndex).ordinal
     val selectedTab = streamingMonitorTabOrOverview(selectedTabIndex)
 
-    // The same requester is used by both existing sidebar implementations when returning
-    // focus to the screen. Restore our saved child after the sidebar closes.
     LaunchedEffect(sidebarExpanded) {
         if (!sidebarExpanded) {
             withFrameNanos { }
@@ -91,8 +101,6 @@ fun StreamingMonitorScreen(showBuiltInHeader: Boolean = true) {
         }
     }
 
-    // Back from the temporary content panel returns to its tab; another Back is handled
-    // by the existing root sidebar, without creating a screen-specific navigation stack.
     BackHandler(enabled = contentFocused && !sidebarExpanded) {
         restoreContentFocus = false
         contentFocused = false
@@ -100,8 +108,7 @@ fun StreamingMonitorScreen(showBuiltInHeader: Boolean = true) {
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = Modifier.fillMaxSize()
             .background(NuvioTheme.colors.Background)
             .padding(
                 start = NuvioTheme.spacing.screen.horizontal,
@@ -117,14 +124,11 @@ fun StreamingMonitorScreen(showBuiltInHeader: Boolean = true) {
             color = NuvioTheme.colors.TextPrimary
         )
         Spacer(Modifier.height(NuvioTheme.spacing.xl))
-
         StreamingMonitorTabs(
             selectedTab = selectedTab,
             tabRequesters = tabRequesters,
             contentRequester = contentRequester,
-            modifier = Modifier
-                .focusRequester(shellFocusRequester)
-                .focusGroup(),
+            modifier = Modifier.focusRequester(shellFocusRequester).focusGroup(),
             onFocused = { index ->
                 lastFocusedTabIndex = index
                 restoreContentFocus = false
@@ -132,21 +136,32 @@ fun StreamingMonitorScreen(showBuiltInHeader: Boolean = true) {
             onSelect = { selectedTabIndex = it }
         )
         Spacer(Modifier.height(NuvioTheme.spacing.xxl))
-
-        StreamingMonitorEmptyPanel(
-            tab = selectedTab,
-            focused = contentFocused,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 208.dp)
-                .focusRequester(contentRequester)
-                .focusProperties { up = tabRequesters[focusedTabIndex] }
-                .onFocusChanged { state ->
-                    contentFocused = state.isFocused
-                    if (state.isFocused) restoreContentFocus = true
+        if (selectedTab == StreamingMonitorTab.Overview) {
+            StreamingMonitorOverview(
+                state = overviewState,
+                firstContentRequester = contentRequester,
+                returnToTabsRequester = tabRequesters[focusedTabIndex],
+                modifier = Modifier.weight(1f),
+                onContentFocusChanged = { hasFocus ->
+                    contentFocused = hasFocus
+                    if (hasFocus) restoreContentFocus = true
                 }
-                .focusable()
-        )
+            )
+        } else {
+            StreamingMonitorEmptyPanel(
+                tab = selectedTab,
+                focused = contentFocused,
+                modifier = Modifier.fillMaxWidth()
+                    .heightIn(min = 208.dp)
+                    .focusRequester(contentRequester)
+                    .focusProperties { up = tabRequesters[focusedTabIndex] }
+                    .onFocusChanged { state ->
+                        contentFocused = state.isFocused
+                        if (state.isFocused) restoreContentFocus = true
+                    }
+                    .focusable()
+            )
+        }
     }
 }
 
@@ -167,8 +182,7 @@ private fun StreamingMonitorTabs(
             val selected = tab == selectedTab
             Button(
                 onClick = { onSelect(tab.ordinal) },
-                modifier = Modifier
-                    .widthIn(min = 150.dp)
+                modifier = Modifier.widthIn(min = 150.dp)
                     .heightIn(min = 52.dp)
                     .focusRequester(tabRequesters[tab.ordinal])
                     .focusProperties { down = contentRequester }
@@ -198,6 +212,11 @@ private fun StreamingMonitorEmptyPanel(
     modifier: Modifier = Modifier
 ) {
     val shape = RoundedCornerShape(NuvioTheme.spacing.lg)
+    val message = when (tab) {
+        StreamingMonitorTab.History -> R.string.streaming_monitor_m01_history
+        StreamingMonitorTab.Connection -> R.string.streaming_monitor_m01_connection
+        StreamingMonitorTab.Overview -> error("Overview has its dedicated M02 screen")
+    }
     Column(
         modifier = modifier
             .background(NuvioTheme.colors.BackgroundCard, shape)
@@ -211,7 +230,7 @@ private fun StreamingMonitorEmptyPanel(
             color = NuvioTheme.colors.TextPrimary
         )
         Text(
-            text = stringResource(tab.emptyMessageRes),
+            text = stringResource(message),
             style = MaterialTheme.typography.bodyLarge,
             color = NuvioTheme.colors.TextSecondary
         )
