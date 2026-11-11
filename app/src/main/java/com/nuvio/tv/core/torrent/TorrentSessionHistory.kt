@@ -65,6 +65,20 @@ fun torrentSessionRating(s: TorrentSessionStats): String = when {
     s.averageDownloadBps >= 400L * 1024 && s.bufferEvents < 2 -> "Mäßig"
     else -> "Instabil"
 }
+private const val FALLBACK_HISTORY_TITLE = "Unbenannte Torrent-Sitzung"
+
+/** Never persist a raw URL, magnet link or torrent identifier as a history title. */
+private val sensitiveHistoryTitle = Regex(
+    """(?i)(?:[a-z][a-z0-9+.-]*://|magnet:\?|xt=urn:btih:|\b[0-9a-f]{40}\b|\b[0-9a-f]{64}\b)"""
+)
+
+internal fun safeTorrentSessionTitle(filename: String?): String {
+    val candidate = filename?.trim()?.take(110)?.takeIf { it.isNotBlank() }
+        ?: return FALLBACK_HISTORY_TITLE
+    return if (sensitiveHistoryTitle.containsMatchIn(candidate)) FALLBACK_HISTORY_TITLE
+        else candidate
+}
+
 fun torrentResolutionHint(name: String): String =
     Regex("(?i)(?:^|[^a-z0-9])(2160p|4k|1080p|720p|480p)(?:$|[^a-z0-9])")
         .find(name)?.groupValues?.get(1)?.uppercase() ?: "Unbekannt"
@@ -81,7 +95,7 @@ internal fun parseSavedTorrentSessions(raw: String?): List<TorrentSessionStats> 
         val time = long("time")
         if (time <= 0L) return@mapNotNull null
         TorrentSessionStats(
-            title = string("title")?.take(110).orEmpty().ifBlank { "Unbenannte Torrent-Sitzung" },
+            title = safeTorrentSessionTitle(string("title")),
             startedAtMs = time,
             durationMs = long("duration").coerceAtLeast(0L),
             resolutionHint = string("resolution")?.take(40) ?: "Unbekannt",
@@ -140,10 +154,14 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
     private var downloadSum = 0L
     private var uploadSum = 0L
     private var rebufferStartedElapsed: Long? = null
+    // Opt-in is captured when a session begins. Clearing or disabling revokes it
+    // for the in-flight session so old data cannot reappear after a clear.
+    private var mayPersistLiveSession = false
 
     @Synchronized fun setEnabled(value: Boolean) {
         prefs.edit().putBoolean("enabled", value).apply()
         _enabled.value = value
+        if (!value) mayPersistLiveSession = false
     }
 
     @Synchronized fun begin(filename: String?): String {
@@ -154,7 +172,8 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
         downloadSum = 0L
         uploadSum = 0L
         rebufferStartedElapsed = null
-        val name = filename?.trim()?.take(110)?.ifEmpty { null } ?: "Unbenannte Torrent-Sitzung"
+        mayPersistLiveSession = _enabled.value
+        val name = safeTorrentSessionTitle(filename)
         _live.value = TorrentSessionStats(
             title = name, startedAtMs = System.currentTimeMillis(),
             resolutionHint = torrentResolutionHint(name),
@@ -271,6 +290,8 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
             else -> TorrentSessionOutcome.UNKNOWN
         }
         val incomplete = rebufferStartedElapsed != null
+        val permittedToPersist = mayPersistLiveSession && _enabled.value
+        mayPersistLiveSession = false
         rebufferStartedElapsed = null
         _live.value = null
         _samples.value = emptyList()
@@ -280,13 +301,14 @@ class TorrentSessionHistory @Inject constructor(@ApplicationContext context: Con
             outcome = chosen,
             rebufferIncomplete = current.rebufferIncomplete || incomplete
         )
-        if (!_enabled.value) return
+        if (!permittedToPersist) return
         val next = boundedSavedSessions(listOf(complete) + _history.value)
         _history.value = next
         saveHistory(next)
     }
 
     @Synchronized fun clear() {
+        mayPersistLiveSession = false
         _history.value = emptyList()
         prefs.edit().remove("entries").apply()
     }
