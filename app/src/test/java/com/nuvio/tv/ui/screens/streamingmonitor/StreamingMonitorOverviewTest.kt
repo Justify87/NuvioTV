@@ -81,6 +81,24 @@ class StreamingMonitorOverviewTest {
         assertNull(recordedStability(listOf(session(samples = 0))).percentage)
     }
 
+    @Test fun playbackSuccessHasExplicitDenominatorIncludingFailedStarts() {
+        val finished = session()
+        val failed = session(failed = true)
+        val cancelled = session(samples = 0).copy(
+            outcome = TorrentSessionOutcome.CANCELLED_BEFORE_PLAYBACK
+        )
+        val noFrame = session(samples = 0)
+        val legacy = session().copy(telemetryVersion = 0)
+        val unknown = session().copy(outcome = TorrentSessionOutcome.UNKNOWN)
+        val result = recordedSuccess(
+            listOf(finished, failed, cancelled, noFrame, legacy, unknown)
+        )
+        assertEquals(4, result.sessionsWithKnownOutcome)
+        assertEquals(1, result.finishedWithFirstFrame)
+        assertEquals(25, result.percentage)
+        assertNull(recordedSuccess(listOf(legacy, unknown)).percentage)
+    }
+
     @Test fun legacySessionsNeverInflateNewStallFreeMetric() {
         val legacy = TorrentSessionStats("Old session", startedAtMs = 5L,
             samples = 100, bufferEvents = 0, durationMs = 400_000L)

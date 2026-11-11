@@ -41,6 +41,33 @@ internal fun recordedStability(history: List<TorrentSessionStats>): RecordedStab
     return RecordedStability(eligible.size, clean)
 }
 
+/**
+ * Success is counted only for persisted v2 sessions with a known terminal outcome.
+ * The denominator includes failed starts and pre-frame cancellations; an unverified
+ * successful finish is not treated as proven playback. Unknown outcomes and legacy
+ * entries are excluded rather than guessed.
+ */
+internal data class RecordedSuccess(
+    val sessionsWithKnownOutcome: Int = 0,
+    val finishedWithFirstFrame: Int = 0
+) {
+    val percentage: Int?
+        get() = if (sessionsWithKnownOutcome == 0) null
+            else (finishedWithFirstFrame * 100) / sessionsWithKnownOutcome
+}
+
+internal fun recordedSuccess(history: List<TorrentSessionStats>): RecordedSuccess {
+    val known = history.filter {
+        it.telemetryVersion >= 2 &&
+            it.outcome != com.nuvio.tv.core.torrent.TorrentSessionOutcome.UNKNOWN
+    }
+    val finished = known.count {
+        it.outcome == com.nuvio.tv.core.torrent.TorrentSessionOutcome.FINISHED &&
+            it.firstFrameMs != null
+    }
+    return RecordedSuccess(known.size, finished)
+}
+
 /** This is the torrent-engine byte rate, never the app VPN throughput. */
 internal fun torrentRates(state: TorrentState): TorrentLiveRates? = when (state) {
     is TorrentState.Streaming -> TorrentLiveRates(
@@ -91,6 +118,7 @@ internal data class StreamingMonitorUiState(
     val recentCount: Int = 0,
     val savedSessions: List<TorrentSessionStats> = emptyList(),
     val summary: RecordedStability = RecordedStability(),
+    val success: RecordedSuccess = RecordedSuccess(),
     val historyRecordingEnabled: Boolean = false,
     val p2pEnabled: Boolean? = null,
     val isLoading: Boolean = true,
@@ -129,6 +157,7 @@ internal fun monitorUiState(
         recentCount = history.size,
         savedSessions = history,
         summary = recordedStability(history),
+        success = recordedSuccess(history),
         historyRecordingEnabled = recordingEnabled,
         p2pEnabled = p2pEnabled,
         isLoading = false,

@@ -195,6 +195,22 @@ internal fun StreamingMonitorOverview(
                 }
             }
         }
+        item(key = "success") {
+            MonitorFocusableCard(Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.sm_success_rate_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = NuvioTheme.colors.TextSecondary)
+                Text(state.success.percentage?.let { "$it %" }
+                    ?: stringResource(R.string.sm_no_data),
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = NuvioTheme.colors.TextPrimary)
+                Text(stringResource(R.string.sm_success_rate_basis,
+                    state.success.finishedWithFirstFrame,
+                    state.success.sessionsWithKnownOutcome),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = NuvioTheme.colors.TextSecondary)
+            }
+        }
         item(key = "privacy") {
             MonitorFocusableCard(Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.sm_privacy_heading),

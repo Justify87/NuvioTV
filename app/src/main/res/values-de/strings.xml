@@ -2378,4 +2378,6 @@
     <string name="sm_connection_cache_disabled">Kein dauerhafter Cache</string>
     <string name="sm_connection_cache_clearing">Cache wird gerade bereinigt…</string>
     <string name="sm_connection_cache_note">Geschützte Bytes sind nicht automatisch löschbar. Das eingestellte Limit ist keine Messung der Belegung; Limits und Bereinigung liegen weiterhin in den P2P-Einstellungen.</string>
+    <string name="sm_success_rate_title">Bestätigter Wiedergabeabschluss</string>
+    <string name="sm_success_rate_basis">%1$d von %2$d Sitzungen mit bekanntem Endstatus endeten regulär nach einem bestätigten ersten Bild. Fehler und Abbrüche zählen als nicht erfolgreich; Altbestand und unbekannte Ausgänge sind ausgeschlossen.</string>
 </resources>

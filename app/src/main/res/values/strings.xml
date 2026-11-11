@@ -3547,4 +3547,6 @@
     <string name="sm_connection_cache_disabled">No persistent cache</string>
     <string name="sm_connection_cache_clearing">Cache clearing is in progress…</string>
     <string name="sm_connection_cache_note">Protected bytes cannot be assumed reclaimable. The configured limit is not measured usage; change limits and clear inactive cache in P2P settings.</string>
+    <string name="sm_success_rate_title">Verified playback completion</string>
+    <string name="sm_success_rate_basis">%1$d of %2$d sessions with a known final outcome finished after a confirmed first frame. Failed starts and cancellations count as unsuccessful; legacy and unknown outcomes are excluded.</string>
 </resources>
