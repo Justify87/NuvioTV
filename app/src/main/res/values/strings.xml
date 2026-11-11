@@ -2469,7 +2469,6 @@
     <string name="streaming_monitor_tab_connection">Connection</string>
     <string name="streaming_monitor_m01_overview">Live streaming measurements will appear in M02.</string>
     <string name="streaming_monitor_m01_history">Session history will be added in M03.</string>
-    <string name="streaming_monitor_m01_connection">VPN and cache information will be added in M05.</string>
     <string name="nav_addons">Addons</string>
     <string name="nav_movies">Movies</string>
     <string name="nav_series">Series</string>
@@ -3511,4 +3510,41 @@
     <string name="sm_outcome_legacy">Legacy history (playback result unknown)</string>
     <string name="sm_kpi_basis_v2">%1$d of %2$d sessions with first-frame and complete rebuffer evidence finished without stalls. Legacy/unknown excluded.</string>
     <string name="sm_history_row_volume_v2">Downloaded %1$s · observed interruptions %2$s</string>
+
+    <!-- Streaming-Monitor: app-scoped VPN and torrent cache, M05 -->
+    <string name="sm_connection_health">VPN connection health</string>
+    <string name="sm_connection_verified">VPN verified</string>
+    <string name="sm_connection_checking">VPN verification pending</string>
+    <string name="sm_connection_error">VPN problem</string>
+    <string name="sm_connection_disconnected">VPN disconnected</string>
+    <string name="sm_connection_scope">Verified VPN egress is checked for this app only. A connected tunnel is not proof of verified egress or an OS-wide kill switch.</string>
+    <string name="sm_connection_p2p_disabled">P2P is disabled. You can still view VPN and cache information here.</string>
+    <string name="sm_connection_recheck">Recheck VPN egress</string>
+    <string name="sm_connection_refreshing">Checking VPN…</string>
+    <string name="sm_connection_refreshing_hint">Using the existing app VPN verification. No new connection will be started.</string>
+    <string name="sm_connection_recheck_success">VPN egress verification completed.</string>
+    <string name="sm_connection_recheck_failed">Verification failed. Check VPN status in settings; torrent protection remains enforced.</string>
+    <string name="sm_connection_recheck_unavailable">Recheck is available only when the VPN manager permits it. Connect the VPN in settings first.</string>
+    <string name="sm_connection_profile">VPN profile</string>
+    <string name="sm_connection_exit_location">Verified exit location</string>
+    <string name="sm_connection_unknown">Not available</string>
+    <string name="sm_connection_not_verified">Not currently verified</string>
+    <string name="sm_connection_last_verified">Last egress verification</string>
+    <string name="sm_connection_last_handshake">Last WireGuard handshake</string>
+    <string name="sm_connection_vpn_download">VPN download</string>
+    <string name="sm_connection_vpn_upload">VPN upload</string>
+    <string name="sm_connection_received">VPN received (Rx)</string>
+    <string name="sm_connection_sent">VPN sent (Tx)</string>
+    <string name="sm_connection_chart_title">Recent VPN traffic</string>
+    <string name="sm_connection_chart_empty">No recent VPN traffic measurements.</string>
+    <string name="sm_connection_chart_evidence">%1$d measured samples over %2$d seconds · peak %3$s</string>
+    <string name="sm_connection_traffic_source">Bytes per second from the existing app-scoped WireGuard monitor; not torrent rates or traffic from every device app. The chart covers only actual available samples.</string>
+    <string name="sm_connection_cache_title">Torrent disk cache</string>
+    <string name="sm_connection_cache_unknown">Cache usage has not been measured yet; unknown is not zero.</string>
+    <string name="sm_connection_cache_used">Used cache</string>
+    <string name="sm_connection_cache_protected">Protected cache</string>
+    <string name="sm_connection_cache_limit">Configured cache limit</string>
+    <string name="sm_connection_cache_disabled">No persistent cache</string>
+    <string name="sm_connection_cache_clearing">Cache clearing is in progress…</string>
+    <string name="sm_connection_cache_note">Protected bytes cannot be assumed reclaimable. The configured limit is not measured usage; change limits and clear inactive cache in P2P settings.</string>
 </resources>

@@ -5,9 +5,7 @@ package com.nuvio.tv.ui.screens.streamingmonitor
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.focusGroup
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,7 +30,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -72,15 +68,24 @@ fun StreamingMonitorScreen(
     viewModel: StreamingMonitorViewModel = hiltViewModel()
 ) {
     val overviewState by viewModel.uiState.collectAsStateWithLifecycle()
-    StreamingMonitorScreenContent(showBuiltInHeader, overviewState, onClearHistory = viewModel::clearSavedHistory)
+    val connectionState by viewModel.connectionState.collectAsStateWithLifecycle()
+    StreamingMonitorScreenContent(
+        showBuiltInHeader = showBuiltInHeader,
+        overviewState = overviewState,
+        connectionState = connectionState,
+        onClearHistory = viewModel::clearSavedHistory,
+        onRefreshVpn = viewModel::refreshVpnVerification
+    )
 }
 
-/** M02 owns the Overview. History and Connection stay neutral until M03/M05. */
+/** TV-native Overview, History and Connection, with one shared tab/focus shell. */
 @Composable
 internal fun StreamingMonitorScreenContent(
     showBuiltInHeader: Boolean = true,
     overviewState: StreamingMonitorUiState = StreamingMonitorUiState(isLoading = false),
-    onClearHistory: () -> Unit = {}
+    connectionState: StreamingMonitorConnectionState = StreamingMonitorConnectionState(),
+    onClearHistory: () -> Unit = {},
+    onRefreshVpn: () -> Unit = {}
 ) {
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(StreamingMonitorTab.Overview.ordinal) }
     var lastFocusedTabIndex by rememberSaveable { mutableIntStateOf(StreamingMonitorTab.Overview.ordinal) }
@@ -168,18 +173,16 @@ internal fun StreamingMonitorScreenContent(
                 }
             )
         } else {
-            StreamingMonitorEmptyPanel(
-                tab = selectedTab,
-                focused = contentFocused,
-                modifier = Modifier.fillMaxWidth()
-                    .heightIn(min = 208.dp)
-                    .focusRequester(contentRequester)
-                    .focusProperties { up = tabRequesters[focusedTabIndex] }
-                    .onFocusChanged { state ->
-                        contentFocused = state.isFocused
-                        if (state.isFocused) restoreContentFocus = true
-                    }
-                    .focusable()
+            StreamingMonitorConnection(
+                state = connectionState,
+                firstContentRequester = contentRequester,
+                returnToTabsRequester = tabRequesters[focusedTabIndex],
+                onRefresh = onRefreshVpn,
+                modifier = Modifier.weight(1f),
+                onContentFocusChanged = { hasFocus ->
+                    contentFocused = hasFocus
+                    if (hasFocus) restoreContentFocus = true
+                }
             )
         }
     }
@@ -225,34 +228,3 @@ private fun StreamingMonitorTabs(
     }
 }
 
-@Composable
-private fun StreamingMonitorEmptyPanel(
-    tab: StreamingMonitorTab,
-    focused: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val shape = RoundedCornerShape(NuvioTheme.spacing.lg)
-    val message = when (tab) {
-        StreamingMonitorTab.History -> R.string.streaming_monitor_m01_history
-        StreamingMonitorTab.Connection -> R.string.streaming_monitor_m01_connection
-        StreamingMonitorTab.Overview -> error("Overview has its dedicated M02 screen")
-    }
-    Column(
-        modifier = modifier
-            .background(NuvioTheme.colors.BackgroundCard, shape)
-            .border(2.dp, if (focused) NuvioTheme.colors.FocusRing else Color.Transparent, shape)
-            .padding(NuvioTheme.spacing.xxl),
-        verticalArrangement = Arrangement.spacedBy(NuvioTheme.spacing.md)
-    ) {
-        Text(
-            text = stringResource(tab.titleRes),
-            style = MaterialTheme.typography.titleLarge,
-            color = NuvioTheme.colors.TextPrimary
-        )
-        Text(
-            text = stringResource(message),
-            style = MaterialTheme.typography.bodyLarge,
-            color = NuvioTheme.colors.TextSecondary
-        )
-    }
-}
