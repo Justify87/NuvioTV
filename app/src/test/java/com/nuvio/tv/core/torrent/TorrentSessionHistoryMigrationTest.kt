@@ -92,4 +92,64 @@ class TorrentSessionHistoryMigrationTest {
         verify(exactly = 1) { edit.putBoolean("enabled", true) }
         verify(exactly = 1) { edit.remove("entries") }
     }
+
+    @Test fun sensitiveTitlesAreNeverStoredOrCarriedForwardFromLegacy() {
+        assertEquals("Episode.1080p.mkv", safeTorrentSessionTitle(" Episode.1080p.mkv "))
+        assertEquals("Unbenannte Torrent-Sitzung", safeTorrentSessionTitle("https://example.invalid/?token=dummy"))
+        assertEquals("Unbenannte Torrent-Sitzung", safeTorrentSessionTitle("magnet:?xt=urn:btih:example"))
+        assertEquals("Unbenannte Torrent-Sitzung", safeTorrentSessionTitle("a".repeat(40)))
+        val migrated = parseSavedTorrentSessions(
+            """[{"title":"https://example.invalid/stream?token=dummy","time":1000}]"""
+        )
+        assertEquals("Unbenannte Torrent-Sitzung", migrated.single().title)
+    }
+
+    private fun newHistory(initiallyEnabled: Boolean): TorrentSessionHistory {
+        val prefs = mockk<SharedPreferences>()
+        val edit = mockk<SharedPreferences.Editor>(relaxed = true)
+        val context = mockk<Context>()
+        every { context.getSharedPreferences("torrent_session_history", Context.MODE_PRIVATE) } returns prefs
+        every { prefs.getBoolean("enabled", false) } returns initiallyEnabled
+        every { prefs.getString("entries", null) } returns "[]"
+        every { prefs.edit() } returns edit
+        every { edit.putBoolean(any(), any()) } returns edit
+        every { edit.putString(any(), any()) } returns edit
+        every { edit.remove(any()) } returns edit
+        return TorrentSessionHistory(context)
+    }
+
+    @Test fun enablingRecordingDuringAnExistingStreamDoesNotSaveItsPast() {
+        val history = newHistory(initiallyEnabled = false)
+        history.begin("Public test media")
+        history.setEnabled(true)
+        history.finish()
+        assertTrue(history.enabled.value)
+        assertTrue(history.history.value.isEmpty())
+
+        history.begin("Next public test media")
+        history.finish()
+        assertEquals(1, history.history.value.size)
+        assertEquals("Next public test media", history.history.value.single().title)
+    }
+
+    @Test fun clearDuringPlaybackDoesNotResurrectTheClearedSession() {
+        val history = newHistory(initiallyEnabled = true)
+        history.begin("Public test media")
+        history.clear()
+        history.finish()
+        assertTrue(history.history.value.isEmpty())
+        assertTrue(history.enabled.value)
+        history.begin("Next public test media")
+        history.finish()
+        assertEquals(1, history.history.value.size)
+    }
+
+    @Test fun disablingRecordingRevokesPermissionForTheCurrentSession() {
+        val history = newHistory(initiallyEnabled = true)
+        history.begin("Public test media")
+        history.setEnabled(false)
+        history.setEnabled(true)
+        history.finish()
+        assertTrue(history.history.value.isEmpty())
+    }
 }
