@@ -2,15 +2,28 @@ package com.nuvio.tv.core.torrent
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.SystemClock
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import io.mockk.verify
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.Before
+import org.junit.After
 
 class TorrentSessionHistoryMigrationTest {
+    @Before fun setUpClock() {
+        mockkStatic(SystemClock::class)
+        every { SystemClock.elapsedRealtime() } returns 1_000L
+    }
+
+    @After fun tearDownClock() {
+        unmockkStatic(SystemClock::class)
+    }
     private fun json(vararg timestamps: Long): String =
         timestamps.joinToString(prefix = "[", postfix = "]") { time ->
             """{"title":"Public test media","time":$time,"duration":1000,"samples":1}"""
