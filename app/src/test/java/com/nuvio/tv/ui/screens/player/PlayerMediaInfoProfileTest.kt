@@ -11,7 +11,7 @@ class PlayerMediaInfoProfileTest {
         val video = Format.Builder()
             .setSampleMimeType(MimeTypes.VIDEO_H264)
             .setWidth(1280).setHeight(720)
-            .setBitrate(4_500_000)
+            .setAverageBitrate(4_500_000)
             .build()
         val audio = Format.Builder()
             .setSampleMimeType(MimeTypes.AUDIO_AAC)
