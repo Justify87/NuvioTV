@@ -3,11 +3,13 @@ package com.nuvio.tv.core.sync.androidtv
 import com.nuvio.tv.R
 
 /**
- * Android TV preview channels. CONTINUE preserves the original channel's provider ID and
- * DataStore key, so upgrades keep the user's existing launcher channel selection.
+ * Four independent Android TV preview channels: CONTINUE is the exact legacy mixed
+ * channel (same provider ID/DataStore key). IN_PROGRESS/UPCOMING/AVAILABLE are opt-in
+ * additional channels; installing the update never replaces the original channel.
  */
 enum class TvChannelKind(val providerSuffix: String, val titleRes: Int) {
     CONTINUE("", R.string.tv_channel_continue_watching),
+    IN_PROGRESS(":in-progress", R.string.tv_channel_in_progress),
     UPCOMING(":upcoming", R.string.tv_channel_upcoming),
     AVAILABLE(":available", R.string.tv_channel_available)
 }

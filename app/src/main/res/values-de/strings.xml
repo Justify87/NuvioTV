@@ -1,8 +1,9 @@
 <resources>
     <string name="app_name">Nuvio</string>
-    <string name="tv_channel_continue_watching">Weitersehen</string>
-    <string name="tv_channel_upcoming">Nuvio · Demnächst</string>
-    <string name="tv_channel_available">Nuvio · Verfügbare Folgen</string>
+    <string name="tv_channel_continue_watching">Continue Watching</string>
+    <string name="tv_channel_in_progress">Angefangen</string>
+    <string name="tv_channel_upcoming">Demnächst</string>
+    <string name="tv_channel_available">Verfügbare Folgen</string>
     <string name="tv_channel_releases_today">Erscheint heute</string>
     <plurals name="tv_channel_days_to_release">
         <item quantity="one">In %1$d Tag</item>
