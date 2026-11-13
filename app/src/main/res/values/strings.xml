@@ -3,7 +3,11 @@
     <string name="tv_channel_continue_watching">Continue Watching</string>
     <string name="tv_channel_upcoming">Nuvio · Upcoming</string>
     <string name="tv_channel_available">Nuvio · Available Episodes</string>
-    <string name="tv_channel_days_to_release">In %1$d days</string>
+    <string name="tv_channel_releases_today">Releases today</string>
+    <plurals name="tv_channel_days_to_release">
+        <item quantity="one">In %1$d day</item>
+        <item quantity="other">In %1$d days</item>
+    </plurals>
     <string name="type_movie">Movie</string>
     <string name="type_movies">Movies</string>
     <string name="type_series">Series</string>

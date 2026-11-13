@@ -88,7 +88,9 @@ object TvChannelFeedBuilder {
         val date = released?.take(10)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
             ?: return false
         val today = Instant.ofEpochMilli(nowMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-        return !date.isAfter(today)
+        // A date without an exact broadcast time is ambiguous on release day.
+        // Prefer a one-day delay over exposing an unplayable stream early.
+        return date.isBefore(today)
     }
 
     private fun CachedNextUpItem.releaseSortTime(): Long {

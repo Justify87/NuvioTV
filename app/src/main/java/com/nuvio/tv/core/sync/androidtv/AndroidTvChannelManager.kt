@@ -17,6 +17,8 @@ import com.nuvio.tv.domain.model.WatchProgress
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,6 +33,7 @@ class AndroidTvChannelManager @Inject constructor(
     private val prefs: TvChannelPreferences,
 ) {
     private val syncedProgramFingerprints = ConcurrentHashMap<String, ChannelProgramFingerprint>()
+    private val reconciliationMutex = Mutex()
 
     private data class ChannelProgramFingerprint(
         val title: String?,
@@ -137,10 +140,11 @@ class AndroidTvChannelManager @Inject constructor(
      * Syncs [items] to the Continue Watching channel: upserts present items and
      * removes rows that are no longer in the list (completed or dismissed).
      */
-    suspend fun reconcile(items: List<WatchProgress>) =
+    suspend fun reconcile(items: List<WatchProgress>) = reconciliationMutex.withLock {
         reconcileKind(TvChannelKind.CONTINUE, items.map { TvChannelEntry(it) })
+    }
 
-    suspend fun reconcileChannels(feeds: TvChannelFeeds) {
+    suspend fun reconcileChannels(feeds: TvChannelFeeds) = reconciliationMutex.withLock {
         reconcileKind(TvChannelKind.CONTINUE, feeds.continueWatching)
         reconcileKind(TvChannelKind.UPCOMING, feeds.upcoming)
         reconcileKind(TvChannelKind.AVAILABLE, feeds.available)
@@ -246,7 +250,11 @@ class AndroidTvChannelManager @Inject constructor(
     }
 
     /** Removes all preview programs from our channel (used on sign-out / history clear). */
-    suspend fun clearAll() = withContext(Dispatchers.IO) {
+    suspend fun clearAll() = reconciliationMutex.withLock {
+        clearAllLocked()
+    }
+
+    private suspend fun clearAllLocked() = withContext(Dispatchers.IO) {
         if (!isSupported()) return@withContext
         runCatching {
             val channelIds = listOfNotNull(
@@ -420,7 +428,12 @@ class AndroidTvChannelManager @Inject constructor(
                 }.getOrNull()
             }
             if (days != null && days >= 0) {
-                context.getString(R.string.tv_channel_days_to_release, days)
+                if (days == 0L) {
+                    context.getString(R.string.tv_channel_releases_today)
+                } else {
+                    val count = days.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                    context.resources.getQuantityString(R.plurals.tv_channel_days_to_release, count, count)
+                }
             } else {
                 context.getString(R.string.cw_upcoming)
             }

@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,6 +42,7 @@ class AndroidTvChannelSyncService @Inject constructor(
     private val tvRecommendationManager: TvRecommendationManager
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val syncMutex = Mutex()
 
     // The launcher channel is only visible while the app is in the background. Reconciling on
     // every in-playback cache bump (~10s) thrashes the TvProvider and stops launchers like
@@ -96,6 +99,7 @@ class AndroidTvChannelSyncService @Inject constructor(
      * Called both from the live observer and from [TvChannelRefreshJobService].
      */
     suspend fun reconcileFromCache(settings: ChannelSettingsSnapshot? = null) {
+        syncMutex.withLock {
         val resolvedSettings = settings ?: run {
             val daysCap = traktSettingsDataStore.continueWatchingDaysCap.first()
             val dismissed = traktSettingsDataStore.dismissedNextUpKeys.first()
@@ -141,6 +145,7 @@ class AndroidTvChannelSyncService @Inject constructor(
 
         runCatching {
             tvRecommendationManager.updateWatchNext(channelItems)
+        }
         }
     }
 

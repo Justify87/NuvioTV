@@ -35,6 +35,13 @@ class TvChannelFeedBuilderTest {
     }
 
     @Test
+    fun `date only does not mark an episode playable early on its release day`() {
+        val feeds = build(nextUp = listOf(next("today", "2026-11-13", false)))
+        assertEquals("today", feeds.upcoming.single().progress.contentId)
+        assertTrue(feeds.available.isEmpty())
+    }
+
+    @Test
     fun `precise future timestamp takes precedence over a calendar date`() {
         val future = now + 2L * 86_400_000
         val feeds = build(nextUp = listOf(next("future", "2026-11-13", false, future)))
