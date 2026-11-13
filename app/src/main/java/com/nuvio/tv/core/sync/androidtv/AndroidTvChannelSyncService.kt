@@ -8,6 +8,7 @@ import com.nuvio.tv.core.poster.withCustomPosterArt
 import com.nuvio.tv.core.recommendations.TvRecommendationManager
 import com.nuvio.tv.data.local.ContinueWatchingEnrichmentCache
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
+import com.nuvio.tv.data.local.TraktSettingsDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,16 +26,9 @@ private const val TAG = "TvChannelSync"
 private const val DEBOUNCE_MS = 2_000L
 
 /**
- * Keeps the Android TV "Continue Watching" preview channel in sync with the app's
- * CW enrichment cache. Uses the same enriched data that the in-app Continue Watching
- * section displays, respecting user settings (days cap, show unaired, etc.).
- *
- * Items are sourced from [ContinueWatchingEnrichmentCache] which is populated by the
- * HomeViewModel CW pipeline. This ensures the launcher channel shows the same items
- * the user sees in the app UI.
- *
- * Before publishing new programs, all stale programs are removed first to avoid
- * the launcher showing outdated tiles while new ones are being inserted.
+ * Publishes three Android TV preview channels from the existing Continue Watching
+ * enrichment cache. The Home pipeline remains the sole source of watch/episode state.
+ * System Watch Next stays playable-only; upcoming episodes open the detail screen.
  */
 @Singleton
 class AndroidTvChannelSyncService @Inject constructor(
