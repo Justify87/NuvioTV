@@ -6,13 +6,8 @@ import com.nuvio.tv.core.poster.CustomPosterScreen
 import com.nuvio.tv.core.poster.patternForScreen
 import com.nuvio.tv.core.poster.withCustomPosterArt
 import com.nuvio.tv.core.recommendations.TvRecommendationManager
-import com.nuvio.tv.data.local.CachedInProgressItem
-import com.nuvio.tv.data.local.CachedNextUpItem
 import com.nuvio.tv.data.local.ContinueWatchingEnrichmentCache
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
-import com.nuvio.tv.data.local.TraktSettingsDataStore
-import com.nuvio.tv.domain.model.WatchProgress
-import com.nuvio.tv.ui.screens.home.ContinueWatchingItem
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -124,83 +119,34 @@ class AndroidTvChannelSyncService @Inject constructor(
             CustomPosterScreen.TV_RECOMMENDATIONS,
             layoutPreferenceDataStore.customPosterEnabledScreens.first()
         )
-        val channelItems = buildChannelItems(inProgressItems, nextUpItems, resolvedSettings)
-            .withCustomPosterArt(posterPattern)
+        val rawFeeds = TvChannelFeedBuilder.build(
+            inProgress = inProgressItems,
+            nextUp = nextUpItems,
+            daysCap = resolvedSettings.daysCap,
+            dismissedNextUp = resolvedSettings.dismissedNextUp,
+            useEpisodeThumbnails = resolvedSettings.useEpisodeThumbnails
+        )
+        fun decorate(items: List<TvChannelEntry>): List<TvChannelEntry> {
+            val decorated = items.map { it.progress }.withCustomPosterArt(posterPattern)
+            return items.zip(decorated) { item, progress -> item.copy(progress = progress) }
+        }
+        val feeds = TvChannelFeeds(
+            continueWatching = decorate(rawFeeds.continueWatching),
+            upcoming = decorate(rawFeeds.upcoming),
+            available = decorate(rawFeeds.available)
+        )
+        val channelItems = feeds.playableForWatchNext()
 
         Log.d(
             TAG,
-            "Reconciling from cache: ${channelItems.size} items " +
+            "Reconciling from cache: ${feeds.continueWatching.size} started, " +
+                "${feeds.upcoming.size} upcoming, ${feeds.available.size} available " +
                 "(${inProgressItems.size} in-progress, ${nextUpItems.size} next-up raw)"
         )
-        manager.reconcile(channelItems)
+        manager.reconcileChannels(feeds)
 
         runCatching {
             tvRecommendationManager.updateWatchNext(channelItems)
-        }
-    }
-
-    /**
-     * Merges in-progress and next-up cached items into a single list of [WatchProgress]
-     * suitable for the launcher channel, applying user settings:
-     * - Days cap filtering
-     * - Dismissed next-up filtering
-     * - Unreleased/unaired filtering (next-up items that haven't aired yet are excluded
-     *   to avoid showing content that can't be played)
-     * - Deduplication (in-progress takes priority over next-up for same contentId)
-     */
-    private fun buildChannelItems(
-        inProgress: List<CachedInProgressItem>,
-        nextUp: List<CachedNextUpItem>,
-        settings: ChannelSettingsSnapshot
-    ): List<WatchProgress> {
-        val cutoffMs = if (settings.daysCap == TraktSettingsDataStore.CONTINUE_WATCHING_DAYS_CAP_ALL) {
-            null
-        } else {
-            val windowMs = settings.daysCap.toLong() * 24L * 60L * 60L * 1000L
-            System.currentTimeMillis() - windowMs
-        }
-
-        // Filter in-progress items by days cap
-        val filteredInProgress = inProgress
-            .filter { cutoffMs == null || it.lastWatched >= cutoffMs }
-
-        // Filter next-up items: exclude unaired (launcher should only show playable content),
-        // respect days cap and dismissed keys
-        val filteredNextUp = nextUp
-            .filter { it.hasAired }  // Never show unaired in launcher — can't be played
-            .filter { cutoffMs == null || it.lastWatched >= cutoffMs }
-            .filter { nextUpDismissKey(it) !in settings.dismissedNextUp }
-
-        // Deduplicate: in-progress wins over next-up for same contentId
-        val inProgressContentIds = filteredInProgress.mapTo(mutableSetOf()) { it.contentId }
-        val deduplicatedNextUp = filteredNextUp.filter { it.contentId !in inProgressContentIds }
-
-        // Sort: in-progress by lastWatched, next-up by sortTimestamp (which is
-        // releaseTimestamp for release alerts, lastWatched for regular next-up).
-        // This mirrors the in-app CW order for aired content in both sort modes.
-        data class SortableItem(val watchProgress: WatchProgress, val sortKey: Long)
-
-        val inProgressSorted = filteredInProgress.map { item ->
-            SortableItem(item.toWatchProgress(settings.useEpisodeThumbnails), item.lastWatched)
-        }
-
-        val nextUpSorted = deduplicatedNextUp.map { item ->
-            SortableItem(item.toWatchProgress(settings.useEpisodeThumbnails), item.sortTimestamp)
-        }
-
-        return (inProgressSorted + nextUpSorted)
-            .sortedByDescending { it.sortKey }
-            .map { it.watchProgress }
-            .distinctBy { it.contentId }
-    }
-
-    private fun nextUpDismissKey(item: CachedNextUpItem): String {
-        return buildString {
-            append(item.contentId)
-            if (item.seedSeason != null) {
-                append("_s${item.seedSeason}")
-                if (item.seedEpisode != null) append("e${item.seedEpisode}")
-            }
         }
     }
 
@@ -208,60 +154,5 @@ class AndroidTvChannelSyncService @Inject constructor(
         val daysCap: Int,
         val dismissedNextUp: Set<String>,
         val useEpisodeThumbnails: Boolean
-    )
-}
-
-/**
- * Converts a [CachedInProgressItem] to [WatchProgress] for the launcher channel.
- */
-private fun CachedInProgressItem.toWatchProgress(useEpisodeThumbnails: Boolean): WatchProgress {
-    val image = if (useEpisodeThumbnails) {
-        episodeThumbnail ?: backdrop
-    } else {
-        backdrop ?: episodeThumbnail
-    }
-    return WatchProgress(
-        contentId = contentId,
-        contentType = contentType,
-        name = name,
-        poster = poster,
-        backdrop = image,
-        logo = logo,
-        videoId = videoId,
-        season = season,
-        episode = episode,
-        episodeTitle = episodeTitle,
-        position = position,
-        duration = duration,
-        lastWatched = lastWatched,
-        progressPercent = progressPercent
-    )
-}
-
-/**
- * Converts a [CachedNextUpItem] to [WatchProgress] for the launcher channel.
- * Next-up items don't have playback position, so they appear as "0% watched"
- * which launchers typically render without a progress bar.
- */
-private fun CachedNextUpItem.toWatchProgress(useEpisodeThumbnails: Boolean): WatchProgress {
-    val image = if (useEpisodeThumbnails) {
-        thumbnail ?: backdrop
-    } else {
-        backdrop ?: thumbnail
-    }
-    return WatchProgress(
-        contentId = contentId,
-        contentType = contentType,
-        name = name,
-        poster = poster,
-        backdrop = image,
-        logo = logo,
-        videoId = videoId,
-        season = season,
-        episode = episode,
-        episodeTitle = episodeTitle,
-        position = 0,
-        duration = 0,
-        lastWatched = sortTimestamp
     )
 }

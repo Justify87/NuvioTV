@@ -41,7 +41,11 @@ class AndroidTvChannelManager @Inject constructor(
         val sortOrder: Int,
         val season: Int?,
         val episode: Int?,
-        val lastEngagementTime: Long
+        val lastEngagementTime: Long,
+        val description: String?,
+        val episodeDescription: String?,
+        val releaseDate: String?,
+        val launchMode: String?
     )
 
     fun isSupported(): Boolean = try {
@@ -133,12 +137,21 @@ class AndroidTvChannelManager @Inject constructor(
      * Syncs [items] to the Continue Watching channel: upserts present items and
      * removes rows that are no longer in the list (completed or dismissed).
      */
-    suspend fun reconcile(items: List<WatchProgress>) = withContext(Dispatchers.IO) {
+    suspend fun reconcile(items: List<WatchProgress>) =
+        reconcileKind(TvChannelKind.CONTINUE, items.map { TvChannelEntry(it) })
+
+    suspend fun reconcileChannels(feeds: TvChannelFeeds) {
+        reconcileKind(TvChannelKind.CONTINUE, feeds.continueWatching)
+        reconcileKind(TvChannelKind.UPCOMING, feeds.upcoming)
+        reconcileKind(TvChannelKind.AVAILABLE, feeds.available)
+    }
+
+    private suspend fun reconcileKind(kind: TvChannelKind, items: List<TvChannelEntry>) = withContext(Dispatchers.IO) {
         if (!isSupported()) return@withContext
         runCatching {
-            val channelId = ensureChannel() ?: return@runCatching
+            val channelId = ensureChannel(kind) ?: return@runCatching
             val existing = queryExistingPrograms(channelId)
-            val desiredKeys = items.map { progressKey(it) }.toSet()
+            val desiredKeys = items.map { progressKey(it.progress) }.toSet()
 
             for ((key, rowIds) in existing) {
                 if (key !in desiredKeys) {
@@ -148,11 +161,12 @@ class AndroidTvChannelManager @Inject constructor(
                         )
                         Log.d(TAG, "Removed program key=$key rowId=$rowId")
                     }
-                    syncedProgramFingerprints.remove(key)
+                    syncedProgramFingerprints.remove("$channelId:$key")
                 }
             }
 
-            items.forEachIndexed { index, progress ->
+            items.forEachIndexed { index, entry ->
+                val progress = entry.progress
                 val key = progressKey(progress)
                 val rowIds = existing[key]
 
@@ -176,9 +190,14 @@ class AndroidTvChannelManager @Inject constructor(
                     sortOrder = index,
                     season = progress.season,
                     episode = progress.episode,
-                    lastEngagementTime = progress.lastWatched
+                    lastEngagementTime = progress.lastWatched,
+                    description = descriptionFor(entry, kind),
+                    episodeDescription = entry.episodeDescription,
+                    releaseDate = entry.releaseDate,
+                    launchMode = launchModeFor(entry, kind)
                 )
-                val oldFingerprint = syncedProgramFingerprints[key]
+                val fingerprintKey = "$channelId:$key"
+                val oldFingerprint = syncedProgramFingerprints[fingerprintKey]
 
                 if (!rowIds.isNullOrEmpty() && oldFingerprint != null &&
                     oldFingerprint.title == newFingerprint.title &&
@@ -188,13 +207,18 @@ class AndroidTvChannelManager @Inject constructor(
                     oldFingerprint.season == newFingerprint.season &&
                     oldFingerprint.episode == newFingerprint.episode &&
                     oldFingerprint.duration == newFingerprint.duration &&
+                    oldFingerprint.description == newFingerprint.description &&
+                    oldFingerprint.episodeDescription == newFingerprint.episodeDescription &&
+                    oldFingerprint.releaseDate == newFingerprint.releaseDate &&
+                    oldFingerprint.launchMode == newFingerprint.launchMode &&
+                    oldFingerprint.lastEngagementTime == newFingerprint.lastEngagementTime &&
                     abs((oldFingerprint.position ?: 0) - (newFingerprint.position ?: 0)) < 2_000
                 ) {
                     // Item already in sync, skip database update to prevent waking up launcher
                     return@forEachIndexed
                 }
 
-                val values = buildProgramValues(progress, channelId, index, key)
+                val values = buildProgramValues(entry, kind, channelId, index, key)
                 if (!rowIds.isNullOrEmpty()) {
                     val primaryRowId = rowIds.first()
                     // UPDATE the existing program row in place — keeping its row ID stable.
@@ -215,7 +239,7 @@ class AndroidTvChannelManager @Inject constructor(
                         TvContractCompat.PreviewPrograms.CONTENT_URI, values
                     )
                 }
-                syncedProgramFingerprints[key] = newFingerprint
+                syncedProgramFingerprints[fingerprintKey] = newFingerprint
                 Log.d(TAG, "${if (!rowIds.isNullOrEmpty()) "Updated" else "Inserted"} program key=$key pos=${values.getAsInteger("last_playback_position_millis")} dur=${values.getAsInteger("duration_millis")} pct=${progress.progressPercent}")
             }
         }.onFailure { Log.w(TAG, "reconcile failed", it) }
@@ -273,11 +297,14 @@ class AndroidTvChannelManager @Inject constructor(
     }
 
     private fun buildProgramValues(
-        progress: WatchProgress,
+        entry: TvChannelEntry,
+        kind: TvChannelKind,
         channelId: Long,
         sortOrder: Int,
         key: String
     ): ContentValues {
+        val progress = entry.progress
+        val launchMode = launchModeFor(entry, kind)
         val intentUri = Uri.parse(
             Intent(context, MainActivity::class.java).apply {
                 action = Intent.ACTION_VIEW
@@ -291,7 +318,7 @@ class AndroidTvChannelManager @Inject constructor(
                 progress.season?.let { putExtra("season", it) }
                 progress.episode?.let { putExtra("episode", it) }
                 progress.episodeTitle?.let { putExtra("episodeTitle", it) }
-                putExtra("launchMode", "stream")
+                putExtra("launchMode", launchMode)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }.toUri(Intent.URI_INTENT_SCHEME)
         )
@@ -308,6 +335,9 @@ class AndroidTvChannelManager @Inject constructor(
             .setIntentUri(intentUri)
             .setInternalProviderId(key)
             .setWeight(Int.MAX_VALUE - sortOrder)
+        descriptionFor(entry, kind)?.let { builder.setDescription(it) }
+        entry.episodeDescription?.takeIf { it.isNotBlank() }?.let { builder.setLongDescription(it) }
+        entry.releaseDate?.let { builder.setReleaseDate(it) }
 
         // Backdrop/poster fills the tile via posterArt; logo goes to the dedicated logo column
         // so the launcher renders it as a small badge overlay on focus.
@@ -350,6 +380,9 @@ class AndroidTvChannelManager @Inject constructor(
             it.put("last_engagement_time_utc_millis", progress.lastWatched)
             // Explicitly clear poster art when no image is available, so UPDATE operations
             // don't leave stale artwork from previous reconcile cycles.
+            if (entry.releaseDate == null) it.putNull("release_date")
+            if (entry.episodeDescription.isNullOrBlank()) it.putNull("long_description")
+            if (descriptionFor(entry, kind) == null) it.putNull("short_description")
             if (imageUri == null) {
                 it.putNull(TvContractCompat.PreviewPrograms.COLUMN_POSTER_ART_URI)
             }
@@ -361,6 +394,35 @@ class AndroidTvChannelManager @Inject constructor(
             if (progress.duration <= 0 && (progress.progressPercent == null || progress.progressPercent <= 0f)) {
                 it.putNull("duration_millis")
                 it.putNull("last_playback_position_millis")
+            }
+        }
+    }
+
+    private fun launchModeFor(entry: TvChannelEntry, kind: TvChannelKind): String =
+        if (kind == TvChannelKind.UPCOMING || entry.progress.videoId.isBlank()) "detail" else "stream"
+
+    private fun descriptionFor(entry: TvChannelEntry, kind: TvChannelKind): String? = when (kind) {
+        TvChannelKind.CONTINUE -> null
+        TvChannelKind.AVAILABLE -> context.getString(
+            when {
+                entry.isReleaseAlert && entry.isNewSeasonRelease -> R.string.cw_new_season
+                entry.isReleaseAlert -> R.string.cw_new_episode
+                else -> R.string.cw_next_up
+            }
+        )
+        TvChannelKind.UPCOMING -> {
+            val release = entry.releaseDate
+            val days = release?.let {
+                runCatching {
+                    java.time.temporal.ChronoUnit.DAYS.between(
+                        java.time.LocalDate.now(), java.time.LocalDate.parse(it)
+                    )
+                }.getOrNull()
+            }
+            if (days != null && days >= 0) {
+                context.getString(R.string.tv_channel_days_to_release, days)
+            } else {
+                context.getString(R.string.cw_upcoming)
             }
         }
     }
