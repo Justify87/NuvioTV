@@ -272,7 +272,7 @@ class AndroidTvChannelManager @Inject constructor(
                 }
             }
             syncedProgramFingerprints.clear()
-            Log.d(TAG, "Cleared $deletedCount programs for channel $channelId")
+            Log.d(TAG, "Cleared $deletedCount programs from ${channelIds.size} channels")
         }.onFailure { Log.w(TAG, "clearAll failed", it) }
     }
 
