@@ -44,6 +44,9 @@ class AndroidTvChannelManager @Inject constructor(
         val sortOrder: Int,
         val season: Int?,
         val episode: Int?,
+        val episodeTitle: String?,
+        val videoId: String,
+        val contentType: String,
         val lastEngagementTime: Long,
         val description: String?,
         val episodeDescription: String?,
@@ -193,6 +196,9 @@ class AndroidTvChannelManager @Inject constructor(
                     sortOrder = index,
                     season = progress.season,
                     episode = progress.episode,
+                    episodeTitle = progress.episodeTitle,
+                    videoId = progress.videoId,
+                    contentType = progress.contentType,
                     lastEngagementTime = progress.lastWatched,
                     description = descriptionFor(entry, kind),
                     episodeDescription = entry.episodeDescription,
@@ -209,6 +215,9 @@ class AndroidTvChannelManager @Inject constructor(
                     oldFingerprint.sortOrder == newFingerprint.sortOrder &&
                     oldFingerprint.season == newFingerprint.season &&
                     oldFingerprint.episode == newFingerprint.episode &&
+                    oldFingerprint.episodeTitle == newFingerprint.episodeTitle &&
+                    oldFingerprint.videoId == newFingerprint.videoId &&
+                    oldFingerprint.contentType == newFingerprint.contentType &&
                     oldFingerprint.duration == newFingerprint.duration &&
                     oldFingerprint.description == newFingerprint.description &&
                     oldFingerprint.episodeDescription == newFingerprint.episodeDescription &&

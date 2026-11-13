@@ -101,54 +101,54 @@ class AndroidTvChannelSyncService @Inject constructor(
      */
     suspend fun reconcileFromCache(settings: ChannelSettingsSnapshot? = null) {
         syncMutex.withLock {
-        val resolvedSettings = settings ?: run {
-            val daysCap = traktSettingsDataStore.continueWatchingDaysCap.first()
-            val dismissed = traktSettingsDataStore.dismissedNextUpKeys.first()
-            val useEpisodeThumbnails = layoutPreferenceDataStore.useEpisodeThumbnailsInCw.first()
-            ChannelSettingsSnapshot(daysCap, dismissed, useEpisodeThumbnails)
-        }
+            val resolvedSettings = settings ?: run {
+                val daysCap = traktSettingsDataStore.continueWatchingDaysCap.first()
+                val dismissed = traktSettingsDataStore.dismissedNextUpKeys.first()
+                val useEpisodeThumbnails = layoutPreferenceDataStore.useEpisodeThumbnailsInCw.first()
+                ChannelSettingsSnapshot(daysCap, dismissed, useEpisodeThumbnails)
+            }
 
-        val inProgressItems = runCatching { cwEnrichmentCache.getInProgressSnapshot() }
-            .getOrDefault(emptyList())
-        val nextUpItems = runCatching { cwEnrichmentCache.getNextUpSnapshot() }
-            .getOrDefault(emptyList())
+            val inProgressItems = runCatching { cwEnrichmentCache.getInProgressSnapshot() }
+                .getOrDefault(emptyList())
+            val nextUpItems = runCatching { cwEnrichmentCache.getNextUpSnapshot() }
+                .getOrDefault(emptyList())
 
-        val posterPattern = patternForScreen(
-            layoutPreferenceDataStore.customPosterUrlPattern.first(),
-            CustomPosterScreen.TV_RECOMMENDATIONS,
-            layoutPreferenceDataStore.customPosterEnabledScreens.first()
-        )
-        val rawFeeds = TvChannelFeedBuilder.build(
-            inProgress = inProgressItems,
-            nextUp = nextUpItems,
-            daysCap = resolvedSettings.daysCap,
-            dismissedNextUp = resolvedSettings.dismissedNextUp,
-            useEpisodeThumbnails = resolvedSettings.useEpisodeThumbnails
-        )
-        fun decorate(items: List<TvChannelEntry>): List<TvChannelEntry> {
-            val decorated = items.map { it.progress }.withCustomPosterArt(posterPattern)
-            return items.zip(decorated) { item, progress -> item.copy(progress = progress) }
-        }
-        val feeds = TvChannelFeeds(
-            legacy = decorate(rawFeeds.legacy),
-            continueWatching = decorate(rawFeeds.continueWatching),
-            upcoming = decorate(rawFeeds.upcoming),
-            available = decorate(rawFeeds.available)
-        )
-        val channelItems = feeds.playableForWatchNext()
+            val posterPattern = patternForScreen(
+                layoutPreferenceDataStore.customPosterUrlPattern.first(),
+                CustomPosterScreen.TV_RECOMMENDATIONS,
+                layoutPreferenceDataStore.customPosterEnabledScreens.first()
+            )
+            val rawFeeds = TvChannelFeedBuilder.build(
+                inProgress = inProgressItems,
+                nextUp = nextUpItems,
+                daysCap = resolvedSettings.daysCap,
+                dismissedNextUp = resolvedSettings.dismissedNextUp,
+                useEpisodeThumbnails = resolvedSettings.useEpisodeThumbnails
+            )
+            fun decorate(items: List<TvChannelEntry>): List<TvChannelEntry> {
+                val decorated = items.map { it.progress }.withCustomPosterArt(posterPattern)
+                return items.zip(decorated) { item, progress -> item.copy(progress = progress) }
+            }
+            val feeds = TvChannelFeeds(
+                legacy = decorate(rawFeeds.legacy),
+                continueWatching = decorate(rawFeeds.continueWatching),
+                upcoming = decorate(rawFeeds.upcoming),
+                available = decorate(rawFeeds.available)
+            )
+            val channelItems = feeds.playableForWatchNext()
 
-        Log.d(
-            TAG,
-            "Reconciling from cache: ${feeds.legacy.size} classic, " +
-                "${feeds.continueWatching.size} started, " +
-                "${feeds.upcoming.size} upcoming, ${feeds.available.size} available " +
-                "(${inProgressItems.size} in-progress, ${nextUpItems.size} next-up raw)"
-        )
-        manager.reconcileChannels(feeds)
+            Log.d(
+                TAG,
+                "Reconciling from cache: ${feeds.legacy.size} classic, " +
+                    "${feeds.continueWatching.size} started, " +
+                    "${feeds.upcoming.size} upcoming, ${feeds.available.size} available " +
+                    "(${inProgressItems.size} in-progress, ${nextUpItems.size} next-up raw)"
+            )
+            manager.reconcileChannels(feeds)
 
-        runCatching {
-            tvRecommendationManager.updateWatchNext(channelItems)
-        }
+            runCatching {
+                tvRecommendationManager.updateWatchNext(channelItems)
+            }
         }
     }
 
