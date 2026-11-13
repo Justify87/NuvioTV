@@ -35,10 +35,11 @@ class TvChannelFeedBuilderTest {
     }
 
     @Test
-    fun `date only does not mark an episode playable early on its release day`() {
-        val feeds = build(nextUp = listOf(next("today", "2026-11-13", false)))
-        assertEquals("today", feeds.upcoming.single().progress.contentId)
-        assertTrue(feeds.available.isEmpty())
+    fun `date only follows Nuvio UTC midnight release semantics`() {
+        val midnightUtc = Instant.parse("2026-11-13T00:00:00Z").toEpochMilli()
+        val feeds = build(nextUp = listOf(next("today", "2026-11-13", false, midnightUtc)))
+        assertEquals("today", feeds.available.single().progress.contentId)
+        assertTrue(feeds.upcoming.isEmpty())
     }
 
     @Test

@@ -3,11 +3,11 @@ package com.nuvio.tv.core.sync.androidtv
 import com.nuvio.tv.data.local.CachedInProgressItem
 import com.nuvio.tv.data.local.CachedNextUpItem
 import com.nuvio.tv.data.local.TraktSettingsDataStore
+import com.nuvio.tv.core.util.parseEpisodeReleaseInstant
+import com.nuvio.tv.core.util.parseEpisodeReleaseLocalDate
 import com.nuvio.tv.domain.model.WatchProgress
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
-import java.time.ZoneOffset
 
 /** Immutable projection of Nuvio's existing CW cache into three Android TV channels. */
 data class TvChannelFeeds(
@@ -84,28 +84,22 @@ object TvChannelFeedBuilder {
 
     private fun CachedNextUpItem.isAvailable(nowMillis: Long): Boolean {
         if (hasAired) return true
-        releaseTimestamp?.let { return it <= nowMillis }
-        val date = released?.take(10)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-            ?: return false
-        val today = Instant.ofEpochMilli(nowMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-        // A date without an exact broadcast time is ambiguous on release day.
-        // Prefer a one-day delay over exposing an unplayable stream early.
-        return date.isBefore(today)
+        // Reuse Nuvio's own release parser: date-only values become UTC midnight;
+        // timestamped releases retain the supplied instant.
+        val at = releaseTimestamp ?: parseEpisodeReleaseInstant(released)?.toEpochMilli()
+        return at != null && at <= nowMillis
     }
 
     private fun CachedNextUpItem.releaseSortTime(): Long {
         releaseTimestamp?.let { return it }
-        return released?.take(10)?.let {
-            runCatching { LocalDate.parse(it).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }.getOrNull()
-        } ?: Long.MAX_VALUE
+        return parseEpisodeReleaseInstant(released)?.toEpochMilli() ?: Long.MAX_VALUE
     }
 
     private fun CachedNextUpItem.asEntry(useEpisodeThumbnails: Boolean): TvChannelEntry {
-        val date = released?.take(10)?.takeIf {
-            runCatching { LocalDate.parse(it) }.isSuccess
-        } ?: releaseTimestamp?.let {
-            Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString()
-        }
+        val date = parseEpisodeReleaseLocalDate(released)?.toString()
+            ?: releaseTimestamp?.let {
+                Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate().toString()
+            }
         return TvChannelEntry(
             progress = WatchProgress(
                 contentId = contentId,

@@ -13,7 +13,7 @@ Base: Nuvio's existing cached Continue Watching / Next Up pipeline. Target: Andr
 Existing Continue Watching channel IDs and user approval are preserved through the original DataStore key; the two new channels have their own IDs. Secondary channels are discoverable in the launcher channel settings, and the app avoids multiple automatic authorization dialogs.
 
 - Filters: the configured Continue Watching history age limit, dismissed next-up entries, one item per series, and unfinished content taking priority over Next Up.
-- Release transition: an exact release timestamp is checked again on each reconciliation even if cached `hasAired` was stale. Date-only information becomes available **after** the release day, not during it (the precise release time is unknown). A known future timestamp takes priority over a coarse date.
+- Release transition: Nuvio's existing release parser is reused on reconciliation even when cached `hasAired` is stale. Exact instants are respected; date-only values follow Nuvio's original **00:00 UTC** interpretation. This is consistent with the in-app indicator, but does not guarantee that a stream has already been published.
 - Ordering: unfinished items by last watched, upcoming by earliest release, available by the Next Up sort timestamp.
 - Background behavior: the existing periodic job only reprocesses the **local cache** (without requiring internet). It does not fetch new provider metadata. Android JobScheduler is inexact; release-date changes can be delayed. The old network-constrained job is migrated.
 - Reset/profile: channel entries are replaced on reconciliation with the active profile's cached snapshot; sign-out/account reset clears programs from all three channels.
