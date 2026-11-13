@@ -416,10 +416,14 @@ class AndroidTvChannelManager @Inject constructor(
     }
 
     private fun launchModeFor(entry: TvChannelEntry, kind: TvChannelKind): String =
-        if (kind == TvChannelKind.UPCOMING || entry.progress.videoId.isBlank()) "detail" else "stream"
+        when {
+            kind == TvChannelKind.CONTINUE -> "stream" // Exact legacy click behavior
+            kind == TvChannelKind.UPCOMING || entry.progress.videoId.isBlank() -> "detail"
+            else -> "stream"
+        }
 
     private fun descriptionFor(entry: TvChannelEntry, kind: TvChannelKind): String? = when (kind) {
-        TvChannelKind.CONTINUE -> null
+        TvChannelKind.CONTINUE, TvChannelKind.IN_PROGRESS -> null
         TvChannelKind.AVAILABLE -> context.getString(
             when {
                 entry.isReleaseAlert && entry.isNewSeasonRelease -> R.string.cw_new_season
