@@ -122,8 +122,8 @@ class AndroidTvChannelManager @Inject constructor(
             val id = ContentUris.parseId(inserted)
             saveChannelId(kind, id)
             writeChannelLogo(id)
-            // Avoid three consecutive platform approval prompts on first startup.
-            // Extra channels are selectable in the TV launcher's channel settings.
+            // The original channel keeps its existing activation behavior; all three
+            // additional channels remain individually selectable in launcher settings.
             if (kind == TvChannelKind.CONTINUE) TvContractCompat.requestChannelBrowsable(context, id)
             Log.d(TAG, "Created channel id=$id")
             id
@@ -136,16 +136,15 @@ class AndroidTvChannelManager @Inject constructor(
         if (kind == TvChannelKind.CONTINUE) prefs.setChannelId(id) else prefs.setChannelId(kind, id)
     }
 
-    /**
-     * Syncs [items] to the Continue Watching channel: upserts present items and
-     * removes rows that are no longer in the list (completed or dismissed).
-     */
+    /** Original single-channel API, intentionally preserved for callers and tests. */
     suspend fun reconcile(items: List<WatchProgress>) = reconciliationMutex.withLock {
         reconcileKind(TvChannelKind.CONTINUE, items.map { TvChannelEntry(it) })
     }
 
+    /** Classic mixed channel is preserved; the other three are additional opt-in feeds. */
     suspend fun reconcileChannels(feeds: TvChannelFeeds) = reconciliationMutex.withLock {
-        reconcileKind(TvChannelKind.CONTINUE, feeds.continueWatching)
+        reconcileKind(TvChannelKind.CONTINUE, feeds.legacy)
+        reconcileKind(TvChannelKind.IN_PROGRESS, feeds.continueWatching)
         reconcileKind(TvChannelKind.UPCOMING, feeds.upcoming)
         reconcileKind(TvChannelKind.AVAILABLE, feeds.available)
     }
@@ -259,6 +258,7 @@ class AndroidTvChannelManager @Inject constructor(
         runCatching {
             val channelIds = listOfNotNull(
                 prefs.getChannelId(),
+                prefs.getChannelId(TvChannelKind.IN_PROGRESS),
                 prefs.getChannelId(TvChannelKind.UPCOMING),
                 prefs.getChannelId(TvChannelKind.AVAILABLE)
             ).distinct()

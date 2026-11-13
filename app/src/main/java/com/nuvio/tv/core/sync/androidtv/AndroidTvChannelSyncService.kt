@@ -28,9 +28,10 @@ private const val TAG = "TvChannelSync"
 private const val DEBOUNCE_MS = 2_000L
 
 /**
- * Publishes three Android TV preview channels from the existing Continue Watching
- * enrichment cache. The Home pipeline remains the sole source of watch/episode state.
- * System Watch Next stays playable-only; upcoming episodes open the detail screen.
+ * Preserves Nuvio's original mixed Continue Watching Android TV preview channel and
+ * additionally publishes three optional categorized channels from the same enrichment
+ * cache. The Home pipeline remains the source of watch/episode state. System Watch
+ * Next retains the legacy mixed order; upcoming episodes open the detail screen.
  */
 @Singleton
 class AndroidTvChannelSyncService @Inject constructor(
@@ -129,6 +130,7 @@ class AndroidTvChannelSyncService @Inject constructor(
             return items.zip(decorated) { item, progress -> item.copy(progress = progress) }
         }
         val feeds = TvChannelFeeds(
+            legacy = decorate(rawFeeds.legacy),
             continueWatching = decorate(rawFeeds.continueWatching),
             upcoming = decorate(rawFeeds.upcoming),
             available = decorate(rawFeeds.available)
@@ -137,7 +139,8 @@ class AndroidTvChannelSyncService @Inject constructor(
 
         Log.d(
             TAG,
-            "Reconciling from cache: ${feeds.continueWatching.size} started, " +
+            "Reconciling from cache: ${feeds.legacy.size} classic, " +
+                "${feeds.continueWatching.size} started, " +
                 "${feeds.upcoming.size} upcoming, ${feeds.available.size} available " +
                 "(${inProgressItems.size} in-progress, ${nextUpItems.size} next-up raw)"
         )
