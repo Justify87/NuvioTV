@@ -174,6 +174,33 @@ class AndroidTvChannelManagerTest {
         verify(exactly = 1) { contentResolver.delete(any(), null, null) }
     }
 
+    @Test
+    fun `four channel reconciliation preserves legacy channel and inserts three separate channel programs`() = runTest {
+        setupLeanback()
+        setupChannelExists()
+        coEvery { prefs.getChannelId(any<TvChannelKind>()) } answers {
+            when (firstArg<TvChannelKind>()) {
+                TvChannelKind.CONTINUE -> channelId
+                TvChannelKind.IN_PROGRESS -> 43L
+                TvChannelKind.UPCOMING -> 44L
+                TvChannelKind.AVAILABLE -> 45L
+            }
+        }
+        stubProgramQuery(existingRows = emptyMap())
+
+        val p = fakeProgress("tt001", "movie")
+        manager.reconcileChannels(
+            TvChannelFeeds(
+                legacy = listOf(TvChannelEntry(p)),
+                continueWatching = listOf(TvChannelEntry(p)),
+                upcoming = listOf(TvChannelEntry(p)),
+                available = listOf(TvChannelEntry(p))
+            )
+        )
+
+        verify(exactly = 4) { contentResolver.insert(any(), any()) }
+    }
+
     // --- helpers ---
 
     private fun setupLeanback() {

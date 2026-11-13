@@ -981,7 +981,8 @@ open class MainActivity : ComponentActivity() {
                         val contentType = intent.getStringExtra("contentType") ?: return@LaunchedEffect
                         val videoId = intent.getStringExtra("videoId")
                         val name = intent.getStringExtra("name")
-                        if (videoId != null && name != null) {
+                        val mode = intent.getStringExtra("launchMode")
+                        if (mode == "stream" && videoId != null && name != null) {
                             navController.navigate(
                                 Screen.Stream.createRoute(
                                     videoId = videoId,
@@ -1345,7 +1346,7 @@ open class MainActivity : ComponentActivity() {
     private fun captureLaunchIntent(intent: Intent?) {
         val contentId = intent?.getStringExtra("contentId") ?: return
         val launchMode = intent.getStringExtra("launchMode") ?: return
-        if (launchMode != "stream") return
+        if (launchMode != "stream" && launchMode != "detail") return
         pendingLaunchIntent.value = intent
     }
 

@@ -7,7 +7,6 @@ import android.app.job.JobService
 import android.content.ComponentName
 import android.content.Context
 import android.util.Log
-import com.nuvio.tv.core.util.hasPendingJob
 import com.nuvio.tv.core.util.scheduleSafely
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -83,12 +82,15 @@ class TvChannelRefreshJobService : JobService() {
     companion object {
         fun schedulePeriodic(context: Context) {
             val scheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
-            if (scheduler.hasPendingJob(JOB_ID_PERIODIC)) return
+            // Migrate older installations whose cache-only job unnecessarily required internet.
+            val pending = scheduler.getPendingJob(JOB_ID_PERIODIC)
+            if (pending != null && pending.networkType == JobInfo.NETWORK_TYPE_NONE) return
+            if (pending != null) scheduler.cancel(JOB_ID_PERIODIC)
             val job = JobInfo.Builder(
                 JOB_ID_PERIODIC,
                 ComponentName(context, TvChannelRefreshJobService::class.java)
             )
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_NONE)
                 .setPeriodic(PERIODIC_INTERVAL_MS)
                 .setPersisted(true)
                 .build()
@@ -102,7 +104,7 @@ class TvChannelRefreshJobService : JobService() {
                 JOB_ID_IMMEDIATE,
                 ComponentName(context, TvChannelRefreshJobService::class.java)
             )
-                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_NONE)
                 .setOverrideDeadline(5_000)
                 .build()
             if (!scheduler.scheduleSafely(job)) return
