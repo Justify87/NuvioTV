@@ -28,6 +28,44 @@ class TvChannelFeedBuilderTest {
     }
 
     @Test
+    fun `classic channel keeps original mixed order while three new feeds stay separate`() {
+        val feeds = build(
+            inProgress = listOf(started("film")),
+            nextUp = listOf(
+                next("aired", "2026-11-10", true).copy(
+                    sortTimestamp = now + 1_000,
+                    episodeDescription = "The original episode description"
+                ),
+                next("future", "2026-11-19", false)
+            )
+        )
+        assertEquals(listOf("aired", "film"), feeds.legacy.map { it.progress.contentId })
+        assertEquals(listOf("film"), feeds.continueWatching.map { it.progress.contentId })
+        assertEquals(listOf("aired"), feeds.available.map { it.progress.contentId })
+        assertEquals(listOf("future"), feeds.upcoming.map { it.progress.contentId })
+        assertEquals("The original episode description", feeds.legacy.first().episodeDescription)
+        assertEquals("2026-11-10", feeds.legacy.first().releaseDate)
+        assertEquals(feeds.legacy.map { it.progress }, feeds.playableForWatchNext())
+    }
+
+    @Test
+    fun `classic channel still excludes cache entries explicitly marked unaired`() {
+        val feeds = build(nextUp = listOf(next("late-cache", "2026-11-10", false)))
+        assertTrue(feeds.legacy.isEmpty())
+        assertEquals("late-cache", feeds.available.single().progress.contentId)
+    }
+
+    @Test
+    fun `classic channel lets started content win over next up for same series`() {
+        val feeds = build(
+            inProgress = listOf(started("series")),
+            nextUp = listOf(next("series", "2026-11-10", true))
+        )
+        assertEquals(1, feeds.legacy.size)
+        assertEquals("series", feeds.legacy.single().progress.contentId)
+    }
+
+    @Test
     fun `cached unaired episode moves to available at the release date`() {
         val feeds = build(nextUp = listOf(next("released", "2026-11-12", false)))
         assertTrue(feeds.upcoming.isEmpty())
